@@ -99,12 +99,12 @@ function newId() { return Date.now() + "-" + Math.random().toString(36).slice(2,
 // to that fresh copy, and writes it back with a conflict check. If another
 // save landed in the split second between our read and our write, it retries
 // with the newer data instead of silently overwriting that other change.
-async function mutateList(key, applyFn, retries = 3) {
+async function mutateList(key, passcode, applyFn, retries = 3) {
   for (let attempt = 0; attempt < retries; attempt++) {
-    const res = await storage.get(key);
+    const res = await storage.get(key, passcode);
     const current = res && res.value ? JSON.parse(res.value) : [];
     const next = applyFn(current);
-    const writeRes = await storage.set(key, JSON.stringify(next), {
+    const writeRes = await storage.set(key, JSON.stringify(next), passcode, {
       ifUnchangedSince: res ? res.updatedAt : undefined,
     });
     if (writeRes && writeRes.conflict) continue; // someone else wrote first — retry against fresh data
@@ -154,75 +154,7 @@ export class ErrorBoundary extends React.Component {
 
 export default function App() {
   const [screen, setScreen] = useState("front"); // front | register | login | app
-  const [authConfig, setAuthConfig] = useState(null);
   const [session, setSession] = useState(null);
-  const [configLoading, setConfigLoading] = useState(true);
-  const [dbError, setDbError] = useState(false);
-  const [dbErrorDetail, setDbErrorDetail] = useState("");
-
-  useEffect(() => { loadAuthConfig(); }, []);
-
-  async function loadAuthConfig() {
-    setConfigLoading(true);
-    try {
-      const res = await storage.get(AUTH_KEY);
-      if (res && res.value) {
-        setAuthConfig(JSON.parse(res.value));
-      } else {
-        const initial = {
-          adminPasscode: "LYDC2026",
-          barangayPasscodes: Object.fromEntries(BARANGAYS.map(b => [b, "presentacion2026"])),
-        };
-        await storage.set(AUTH_KEY, JSON.stringify(initial));
-        setAuthConfig(initial);
-      }
-      setDbError(false);
-      setDbErrorDetail("");
-    } catch (e) {
-      // Couldn't reach the database at all (missing/wrong env vars, table not
-      // created yet, network issue). Fall back to defaults so the app still
-      // renders, but flag it so MainApp can warn officers that nothing they
-      // enter right now will actually be saved.
-      setAuthConfig({ adminPasscode: "LYDC2026", barangayPasscodes: Object.fromEntries(BARANGAYS.map(b => [b, "presentacion2026"])) });
-      setDbError(true);
-      setDbErrorDetail((e && (e.message || e.toString())) || "Unknown error");
-    }
-    setConfigLoading(false);
-  }
-
-  // Takes a function (currentConfig) => nextConfig instead of a precomputed
-  // object, so it always applies the caller's change on top of the freshest
-  // saved config rather than on top of whatever this tab loaded at mount —
-  // and retries automatically if another admin saved in between. Returns
-  // true/false so callers can show an accurate success/failure message
-  // instead of always assuming the save worked.
-  async function saveAuthConfig(applyFn) {
-    for (let attempt = 0; attempt < 3; attempt++) {
-      let res;
-      try {
-        res = await storage.get(AUTH_KEY);
-      } catch (e) {
-        return false;
-      }
-      const current = res && res.value ? JSON.parse(res.value) : authConfig;
-      const next = applyFn(current);
-      try {
-        const writeRes = await storage.set(AUTH_KEY, JSON.stringify(next), {
-          ifUnchangedSince: res ? res.updatedAt : undefined,
-        });
-        if (writeRes && writeRes.conflict) continue;
-        setAuthConfig(next);
-        return true;
-      } catch (e) {
-        return false;
-      }
-    }
-    return false;
-  }
-
-  if (configLoading) {
-    return <div className="min-h-screen flex items-center justify-center text-stone-400 text-sm" style={{ background: CREAM }}>Loading…</div>;
-  }
 
   if (screen === "front") {
     return <FrontPage onRegister={() => setScreen("register")} onLogin={() => setScreen("login")} />;
@@ -231,11 +163,11 @@ export default function App() {
     return <SelfRegisterScreen onBack={() => setScreen("front")} />;
   }
   if (screen === "login") {
-    return <LoginScreen authConfig={authConfig} onBack={() => setScreen("front")}
+    return <LoginScreen onBack={() => setScreen("front")}
       onLogin={(s) => { setSession(s); setScreen("app"); }} />;
   }
   return (
-    <MainApp session={session} authConfig={authConfig} saveAuthConfig={saveAuthConfig} dbError={dbError} dbErrorDetail={dbErrorDetail}
+    <MainApp session={session}
       onLogout={() => { setSession(null); setScreen("front"); }} />
   );
 }
@@ -248,15 +180,8 @@ function FrontPage({ onRegister, onLogin }) {
   useEffect(() => {
     (async () => {
       try {
-        const [mRes, oRes] = await Promise.all([
-          storage.get(MEMBERS_KEY),
-          storage.get(OFFICIALS_KEY),
-        ]);
-        const members = mRes && mRes.value ? JSON.parse(mRes.value) : [];
-        const officials = oRes && oRes.value ? JSON.parse(oRes.value) : [];
-        const verifiedActive = members.filter(m => !m.archived && m.verified);
-        const barangaysActive = new Set(verifiedActive.map(m => m.barangay)).size;
-        setStats({ members: verifiedActive.length, barangaysActive, officials: officials.length, loading: false });
+        const s = await storage.getPublicStats();
+        setStats({ ...s, loading: false });
       } catch (e) {
         setStats({ members: 0, barangaysActive: 0, officials: 0, loading: false });
       }
@@ -346,7 +271,7 @@ function SelfRegisterScreen({ onBack }) {
     const age = calcAge(form.birthdate);
     const record = { ...form, age, ageGroup: ageGroupFromAge(age), id: newId(), verified: false, source: "self", archived: false };
     try {
-      await mutateList(MEMBERS_KEY, (current) => [...current, record]);
+      await storage.submitSelfRegistration(record);
       setSubmitted(true);
     } catch (e2) {
       setError("Could not submit. Please check your connection and try again.");
@@ -470,22 +395,28 @@ function SelfRegisterScreen({ onBack }) {
 
 // ---------- LOGIN ----------
 
-function LoginScreen({ authConfig, onLogin, onBack }) {
+function LoginScreen({ onLogin, onBack }) {
   const [role, setRole] = useState("officer");
   const [barangay, setBarangay] = useState(BARANGAYS[0]);
   const [passcode, setPasscode] = useState("");
   const [error, setError] = useState("");
+  const [checking, setChecking] = useState(false);
 
-  function handleSubmit(e) {
+  async function handleSubmit(e) {
     e.preventDefault();
-    if (role === "admin") {
-      if (passcode === authConfig.adminPasscode) onLogin({ role: "admin", barangay: null });
-      else setError("Incorrect LYDC admin passcode.");
-    } else {
-      const expected = (authConfig.barangayPasscodes || {})[barangay];
-      if (expected && passcode === expected) onLogin({ role: "officer", barangay });
-      else setError("Incorrect passcode for this barangay.");
+    setError("");
+    setChecking(true);
+    try {
+      const ok = await storage.verifyLogin(role, role === "admin" ? null : barangay, passcode);
+      if (ok) {
+        onLogin({ role, barangay: role === "admin" ? null : barangay, passcode });
+      } else {
+        setError(role === "admin" ? "Incorrect LYDC admin passcode." : "Incorrect passcode for this barangay.");
+      }
+    } catch (e2) {
+      setError("Could not check the passcode. Please check your connection and try again.");
     }
+    setChecking(false);
   }
 
   return (
@@ -537,7 +468,9 @@ function LoginScreen({ authConfig, onLogin, onBack }) {
 
           {error && <p className="text-xs text-red-600 mb-3">{error}</p>}
 
-          <button type="submit" className="w-full py-2.5 rounded-lg text-white text-sm font-semibold" style={{ background: NAVY }}>Log In</button>
+          <button type="submit" disabled={checking} className="w-full py-2.5 rounded-lg text-white text-sm font-semibold disabled:opacity-60" style={{ background: NAVY }}>
+            {checking ? "Checking…" : "Log In"}
+          </button>
         </form>
       </div>
     </div>
@@ -546,10 +479,11 @@ function LoginScreen({ authConfig, onLogin, onBack }) {
 
 // ---------- MAIN APP (post-login) ----------
 
-function MainApp({ session, onLogout, authConfig, saveAuthConfig, dbError, dbErrorDetail }) {
+function MainApp({ session, onLogout }) {
   const isAdmin = session.role === "admin";
   const [members, setMembers] = useState([]);
   const [officials, setOfficials] = useState([]);
+  const [authConfig, setAuthConfig] = useState(null);
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState("dashboard");
   const [scopeBarangay, setScopeBarangay] = useState(isAdmin ? "All Barangays" : session.barangay);
@@ -575,12 +509,14 @@ function MainApp({ session, onLogout, authConfig, saveAuthConfig, dbError, dbErr
   async function loadAll() {
     setLoading(true);
     try {
-      const [mRes, oRes] = await Promise.all([
-        storage.get(MEMBERS_KEY),
-        storage.get(OFFICIALS_KEY),
+      const [mRes, oRes, aRes] = await Promise.all([
+        storage.get(MEMBERS_KEY, session.passcode),
+        storage.get(OFFICIALS_KEY, session.passcode),
+        storage.get(AUTH_KEY, session.passcode),
       ]);
       setMembers(mRes && mRes.value ? JSON.parse(mRes.value) : []);
       setOfficials(oRes && oRes.value ? JSON.parse(oRes.value) : []);
+      setAuthConfig(aRes && aRes.value ? JSON.parse(aRes.value) : null);
       setLoadError(false);
       setLoadErrorDetail("");
     } catch (e) {
@@ -598,7 +534,7 @@ function MainApp({ session, onLogout, authConfig, saveAuthConfig, dbError, dbErr
   // is only updated once the write is confirmed.
   async function persistMembers(applyFn) {
     try {
-      const next = await mutateList(MEMBERS_KEY, applyFn);
+      const next = await mutateList(MEMBERS_KEY, session.passcode, applyFn);
       setMembers(next);
       setSaveError("");
       return next;
@@ -610,7 +546,7 @@ function MainApp({ session, onLogout, authConfig, saveAuthConfig, dbError, dbErr
 
   async function persistOfficials(applyFn) {
     try {
-      const next = await mutateList(OFFICIALS_KEY, applyFn);
+      const next = await mutateList(OFFICIALS_KEY, session.passcode, applyFn);
       setOfficials(next);
       setSaveError("");
       return next;
@@ -618,6 +554,33 @@ function MainApp({ session, onLogout, authConfig, saveAuthConfig, dbError, dbErr
       setSaveError("Could not save — please check your connection and try again.");
       throw e;
     }
+  }
+
+  // Same idea as saveAuthConfig used to work at the App root, just moved
+  // here now that reading/writing the auth config also requires a valid
+  // passcode — which only exists once someone's logged in.
+  async function saveAuthConfig(applyFn) {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      let res;
+      try {
+        res = await storage.get(AUTH_KEY, session.passcode);
+      } catch (e) {
+        return false;
+      }
+      const current = res && res.value ? JSON.parse(res.value) : authConfig;
+      const next = applyFn(current);
+      try {
+        const writeRes = await storage.set(AUTH_KEY, JSON.stringify(next), session.passcode, {
+          ifUnchangedSince: res ? res.updatedAt : undefined,
+        });
+        if (writeRes && writeRes.conflict) continue;
+        setAuthConfig(next);
+        return true;
+      } catch (e) {
+        return false;
+      }
+    }
+    return false;
   }
 
   function showToast(msg) { setToast(msg); setTimeout(() => setToast(""), 2200); }
@@ -860,12 +823,12 @@ function MainApp({ session, onLogout, authConfig, saveAuthConfig, dbError, dbErr
       </div>
 
       <main className="max-w-6xl mx-auto px-5 py-6">
-        {(dbError || loadError) && (
+        {loadError && (
           <div className="mb-4 text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
             Could not connect to the database. Records shown below may be out of date, and anything you add or edit
             right now will not be saved. Check your internet connection and reload the page — if this keeps
             happening, the site's Supabase configuration may need to be checked.
-            {(dbErrorDetail || loadErrorDetail) && <div className="mt-1 font-mono text-xs opacity-80">Details: {dbErrorDetail || loadErrorDetail}</div>}
+            {loadErrorDetail && <div className="mt-1 font-mono text-xs opacity-80">Details: {loadErrorDetail}</div>}
           </div>
         )}
         {saveError && <div className="mb-4 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{saveError}</div>}
@@ -900,8 +863,12 @@ function MainApp({ session, onLogout, authConfig, saveAuthConfig, dbError, dbErr
             handleSubmit={handleOfficialSubmit} resetForm={resetOfficialForm} setView={setView}
             inputCls={inputCls} labelCls={labelCls} isAdmin={isAdmin} lockedBarangay={session.barangay} />
         ) : view === "settings" && isAdmin ? (
-          <SettingsPanel authConfig={authConfig} saveAuthConfig={saveAuthConfig} showToast={showToast}
-            members={members} officials={officials} />
+          authConfig ? (
+            <SettingsPanel authConfig={authConfig} saveAuthConfig={saveAuthConfig} showToast={showToast}
+              members={members} officials={officials} />
+          ) : (
+            <div className="text-center text-stone-400 py-20 text-sm">Could not load settings. Please reload the page.</div>
+          )
         ) : (
           <Reports scopeBarangay={scopeBarangay} members={members} agingList={agingList} exportCSV={exportCSV} />
         )}
