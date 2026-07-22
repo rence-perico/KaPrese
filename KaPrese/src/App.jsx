@@ -158,6 +158,7 @@ export default function App() {
   const [session, setSession] = useState(null);
   const [configLoading, setConfigLoading] = useState(true);
   const [dbError, setDbError] = useState(false);
+  const [dbErrorDetail, setDbErrorDetail] = useState("");
 
   useEffect(() => { loadAuthConfig(); }, []);
 
@@ -176,6 +177,7 @@ export default function App() {
         setAuthConfig(initial);
       }
       setDbError(false);
+      setDbErrorDetail("");
     } catch (e) {
       // Couldn't reach the database at all (missing/wrong env vars, table not
       // created yet, network issue). Fall back to defaults so the app still
@@ -183,6 +185,7 @@ export default function App() {
       // enter right now will actually be saved.
       setAuthConfig({ adminPasscode: "LYDC2026", barangayPasscodes: Object.fromEntries(BARANGAYS.map(b => [b, "presentacion2026"])) });
       setDbError(true);
+      setDbErrorDetail((e && (e.message || e.toString())) || "Unknown error");
     }
     setConfigLoading(false);
   }
@@ -232,7 +235,7 @@ export default function App() {
       onLogin={(s) => { setSession(s); setScreen("app"); }} />;
   }
   return (
-    <MainApp session={session} authConfig={authConfig} saveAuthConfig={saveAuthConfig} dbError={dbError}
+    <MainApp session={session} authConfig={authConfig} saveAuthConfig={saveAuthConfig} dbError={dbError} dbErrorDetail={dbErrorDetail}
       onLogout={() => { setSession(null); setScreen("front"); }} />
   );
 }
@@ -543,7 +546,7 @@ function LoginScreen({ authConfig, onLogin, onBack }) {
 
 // ---------- MAIN APP (post-login) ----------
 
-function MainApp({ session, onLogout, authConfig, saveAuthConfig, dbError }) {
+function MainApp({ session, onLogout, authConfig, saveAuthConfig, dbError, dbErrorDetail }) {
   const isAdmin = session.role === "admin";
   const [members, setMembers] = useState([]);
   const [officials, setOfficials] = useState([]);
@@ -565,6 +568,7 @@ function MainApp({ session, onLogout, authConfig, saveAuthConfig, dbError }) {
   const [confirmReject, setConfirmReject] = useState(null);
   const [saveError, setSaveError] = useState("");
   const [loadError, setLoadError] = useState(false);
+  const [loadErrorDetail, setLoadErrorDetail] = useState("");
 
   useEffect(() => { loadAll(); }, []);
 
@@ -578,9 +582,11 @@ function MainApp({ session, onLogout, authConfig, saveAuthConfig, dbError }) {
       setMembers(mRes && mRes.value ? JSON.parse(mRes.value) : []);
       setOfficials(oRes && oRes.value ? JSON.parse(oRes.value) : []);
       setLoadError(false);
+      setLoadErrorDetail("");
     } catch (e) {
       setMembers([]); setOfficials([]);
       setLoadError(true);
+      setLoadErrorDetail((e && (e.message || e.toString())) || "Unknown error");
     }
     setLoading(false);
   }
@@ -859,6 +865,7 @@ function MainApp({ session, onLogout, authConfig, saveAuthConfig, dbError }) {
             Could not connect to the database. Records shown below may be out of date, and anything you add or edit
             right now will not be saved. Check your internet connection and reload the page — if this keeps
             happening, the site's Supabase configuration may need to be checked.
+            {(dbErrorDetail || loadErrorDetail) && <div className="mt-1 font-mono text-xs opacity-80">Details: {dbErrorDetail || loadErrorDetail}</div>}
           </div>
         )}
         {saveError && <div className="mb-4 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{saveError}</div>}
