@@ -1,33 +1,42 @@
-// Client-side wrapper around a small set of Postgres functions (see
-// supabase-security.sql) instead of talking to the `kv_store` table
-// directly. The table itself is locked down (no direct anon access) —
-// every read and write goes through one of these functions, which check
-// a passcode server-side before doing anything. This means:
-//   - Nobody can read or write the database directly with just the site's
-//     public key; they'd also need a valid admin/barangay passcode.
-//   - The actual stored passcodes are never sent to the browser — logging
-//     in calls verifyLogin(), which only returns true/false.
-//   - The public front page's stats use a dedicated function that returns
-//     counts only, never the full list of members' personal details.
-//   - Public self-registration uses a dedicated function that can only
-//     append one new (unverified) record — it can't read, edit, or delete
-//     anything.
+// Auth: real Supabase Auth accounts (one per officer, plus the admin)
+// instead of shared passcodes. Data access: direct table queries —
+// security now lives in the database's row-level security policies
+// (see supabase-accounts-schema.sql), not in this file. An officer's
+// queries can only ever return their own barangay's rows; that's
+// enforced by Postgres itself, not by anything the client sends.
 
 import { supabase } from "./supabaseClient.js";
 
-export const storage = {
-  // Never returns the real passcode — only whether it matched.
-  async verifyLogin(role, barangay, passcode) {
-    const { data, error } = await supabase.rpc("verify_login", {
-      p_role: role,
-      p_barangay: barangay || null,
-      p_passcode: passcode,
-    });
+export const auth = {
+  async signIn(email, password) {
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) throw error;
-    return Boolean(data);
+    return data.session;
   },
+  async signOut() {
+    await supabase.auth.signOut();
+  },
+  async getSession() {
+    const { data } = await supabase.auth.getSession();
+    return data.session;
+  },
+  async getProfile(userId) {
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("role, barangay, full_name")
+      .eq("id", userId)
+      .single();
+    if (error) throw error;
+    return data;
+  },
+  async changePassword(newPassword) {
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    if (error) throw error;
+  },
+};
 
-  // Aggregate counts only — safe to call without logging in.
+export const storage = {
+  // PII-free counts for the public front page — no login needed.
   async getPublicStats() {
     const { data, error } = await supabase.rpc("get_public_stats");
     if (error) throw error;
@@ -39,44 +48,141 @@ export const storage = {
     };
   },
 
-  // Appends one new, unverified self-registration record. Can't touch
-  // anything else — no passcode needed or accepted.
+  // Public self-registration: RLS only allows this exact shape (see
+  // "public self registration" policy) — verified/archived/source are
+  // forced here as well as a first line of defense.
   async submitSelfRegistration(record) {
-    const { error } = await supabase.rpc("submit_self_registration", { p_record: record });
+    const { error } = await supabase
+      .from("members")
+      .insert({ ...toDbMember(record), verified: false, archived: false, source: "self" });
     if (error) throw error;
   },
 
-  // Requires a valid admin or barangay passcode. Returns the same shape as
-  // before ({ key, value, updatedAt }) so the rest of the app doesn't need
-  // to change how it reads the result.
-  async get(key, passcode) {
-    const { data, error } = await supabase.rpc("get_kv", { p_key: key, p_passcode: passcode });
+  async getMembers() {
+    const { data, error } = await supabase.from("members").select("*").order("last_name");
     if (error) throw error;
-    const row = Array.isArray(data) ? data[0] : data;
-    if (!row || row.value === null || row.value === undefined) return null;
-    return { key, value: JSON.stringify(row.value), updatedAt: row.updated_at };
+    return data.map(fromDbMember);
+  },
+  async addMember(record) {
+    const { data, error } = await supabase.from("members").insert(toDbMember(record)).select().single();
+    if (error) throw error;
+    return fromDbMember(data);
+  },
+  async updateMember(id, record) {
+    const { data, error } = await supabase.from("members").update(toDbMember(record)).eq("id", id).select().single();
+    if (error) throw error;
+    return fromDbMember(data);
+  },
+  async deleteMember(id) {
+    const { error } = await supabase.from("members").delete().eq("id", id);
+    if (error) throw error;
   },
 
-  // Requires a valid admin or barangay passcode. Same optimistic-concurrency
-  // shape as before: pass ifUnchangedSince to make the write conditional on
-  // nobody else having saved in the meantime.
-  async set(key, value, passcode, options = {}) {
-    const { ifUnchangedSince } = options;
-    let parsed;
-    try {
-      parsed = typeof value === "string" ? JSON.parse(value) : value;
-    } catch {
-      parsed = value;
-    }
-    const { data, error } = await supabase.rpc("save_kv", {
-      p_key: key,
-      p_value: parsed,
-      p_expected_updated_at: ifUnchangedSince || null,
-      p_passcode: passcode,
-    });
+  async getOfficials() {
+    const { data, error } = await supabase.from("officials").select("*").order("barangay");
     if (error) throw error;
-    const row = Array.isArray(data) ? data[0] : data;
-    if (row && row.conflict) return { conflict: true };
-    return { key, value, updatedAt: row ? row.updated_at : new Date().toISOString() };
+    return data.map(fromDbOfficial);
+  },
+  async addOfficial(record) {
+    const { data, error } = await supabase.from("officials").insert(toDbOfficial(record)).select().single();
+    if (error) throw error;
+    return fromDbOfficial(data);
+  },
+  async updateOfficial(id, record) {
+    const { data, error } = await supabase.from("officials").update(toDbOfficial(record)).eq("id", id).select().single();
+    if (error) throw error;
+    return fromDbOfficial(data);
+  },
+  async deleteOfficial(id) {
+    const { error } = await supabase.from("officials").delete().eq("id", id);
+    if (error) throw error;
   },
 };
+
+// The rest of the app uses camelCase field names (lastName, firstName, ...);
+// the database uses snake_case columns. These convert between the two so
+// nothing else in the app needs to know the difference.
+function toDbMember(m) {
+  return {
+    barangay: m.barangay,
+    last_name: m.lastName,
+    first_name: m.firstName,
+    middle_name: m.middleName || null,
+    suffix: m.suffix || null,
+    birthdate: m.birthdate || null,
+    age: m.age ?? null,
+    sex: m.sex || null,
+    civil_status: m.civilStatus || null,
+    classification: m.classification || [],
+    pwd: !!m.pwd,
+    ip: !!m.ip,
+    age_group: m.ageGroup || null,
+    email: m.email || null,
+    contact: m.contact || null,
+    address: m.address || null,
+    education: m.education || null,
+    work_status: m.workStatus || null,
+    registered_sk_voter: m.registeredSKVoter || null,
+    registered_national_voter: m.registeredNationalVoter || null,
+    attended_assembly: m.attendedAssembly || null,
+    archived: !!m.archived,
+    verified: m.verified !== false,
+    source: m.source || "staff",
+  };
+}
+function fromDbMember(r) {
+  return {
+    id: r.id,
+    barangay: r.barangay,
+    lastName: r.last_name,
+    firstName: r.first_name,
+    middleName: r.middle_name || "",
+    suffix: r.suffix || "",
+    birthdate: r.birthdate || "",
+    age: r.age,
+    sex: r.sex || "",
+    civilStatus: r.civil_status || "",
+    classification: r.classification || [],
+    pwd: r.pwd,
+    ip: r.ip,
+    ageGroup: r.age_group || "",
+    email: r.email || "",
+    contact: r.contact || "",
+    address: r.address || "",
+    education: r.education || "",
+    workStatus: r.work_status || "",
+    registeredSKVoter: r.registered_sk_voter || "",
+    registeredNationalVoter: r.registered_national_voter || "",
+    attendedAssembly: r.attended_assembly || "",
+    archived: r.archived,
+    verified: r.verified,
+    source: r.source,
+  };
+}
+function toDbOfficial(o) {
+  return {
+    barangay: o.barangay,
+    position: o.position,
+    last_name: o.lastName,
+    first_name: o.firstName,
+    middle_name: o.middleName || null,
+    term_start: o.termStart || null,
+    term_end: o.termEnd || null,
+    contact: o.contact || null,
+    email: o.email || null,
+  };
+}
+function fromDbOfficial(r) {
+  return {
+    id: r.id,
+    barangay: r.barangay,
+    position: r.position,
+    lastName: r.last_name,
+    firstName: r.first_name,
+    middleName: r.middle_name || "",
+    termStart: r.term_start || "",
+    termEnd: r.term_end || "",
+    contact: r.contact || "",
+    email: r.email || "",
+  };
+}
