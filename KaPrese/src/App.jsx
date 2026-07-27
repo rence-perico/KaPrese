@@ -3,7 +3,7 @@ import {
   Users, Search, Plus, LayoutDashboard, FileBarChart, MapPin,
   Pencil, Trash2, Download, X, ChevronDown, LogOut, Lock,
   ShieldCheck, UserCog, AlertTriangle, Archive, Settings as SettingsIcon,
-  ClipboardCheck, ArrowLeft, CheckCircle2, Database, Home
+  ClipboardCheck, ArrowLeft, CheckCircle2, Database, Home, CreditCard
 } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -43,7 +43,7 @@ const emptyMemberForm = {
   email: "", contact: "", address: "",
   education: EDUC_ATTAINMENT[0], workStatus: WORK_STATUS[0],
   registeredSKVoter: "Yes", registeredNationalVoter: "Yes", attendedAssembly: "No",
-  archived: false, verified: true, source: "staff",
+  archived: false, verified: true, source: "staff", photoUrl: "",
 };
 
 const emptyOfficialForm = {
@@ -128,6 +128,14 @@ export class ErrorBoundary extends React.Component {
 }
 
 export default function App() {
+  const idMatch = typeof window !== "undefined" ? window.location.pathname.match(/^\/id\/([^/]+)\/?$/) : null;
+  if (idMatch) {
+    return <DigitalIdCard memberId={idMatch[1]} />;
+  }
+  return <KaPreseApp />;
+}
+
+function KaPreseApp() {
   const [screen, setScreen] = useState("front"); // front | register | login | app | checking
   const [session, setSession] = useState(null);
   const [checkingSession, setCheckingSession] = useState(true);
@@ -165,6 +173,87 @@ export default function App() {
   return (
     <MainApp session={session}
       onLogout={async () => { await auth.signOut(); setSession(null); setScreen("front"); }} />
+  );
+}
+
+// ---------- DIGITAL ID CARD (public link, no login needed) ----------
+
+function DigitalIdCard({ memberId }) {
+  const [card, setCard] = useState(null);
+  const [loadState, setLoadState] = useState("loading"); // loading | ok | notfound | error
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const c = await storage.getMemberCard(memberId);
+        if (!c || !c.verified) { setLoadState("notfound"); return; }
+        setCard(c);
+        setLoadState("ok");
+      } catch (e) {
+        setLoadState("error");
+      }
+    })();
+  }, [memberId]);
+
+  if (loadState === "loading") {
+    return <div className="min-h-screen flex items-center justify-center text-stone-400 text-sm" style={{ background: CREAM }}>Loading…</div>;
+  }
+  if (loadState === "notfound") {
+    return <div className="min-h-screen flex items-center justify-center text-stone-500 text-sm px-4 text-center" style={{ background: CREAM }}>
+      This ID could not be found, or is not yet verified.
+    </div>;
+  }
+  if (loadState === "error") {
+    return <div className="min-h-screen flex items-center justify-center text-stone-500 text-sm px-4 text-center" style={{ background: CREAM }}>
+      Could not load this ID. Please check your connection and try again.
+    </div>;
+  }
+
+  const fullName = `${card.firstName} ${card.middleName ? card.middleName[0] + ". " : ""}${card.lastName}`;
+
+  return (
+    <div className="min-h-screen flex flex-col items-center py-10 px-4 print:py-0 print:block" style={{ background: CREAM, fontFamily: "'Inter', system-ui, sans-serif" }}>
+      <style>{`
+        @media print {
+          @page { size: 3.375in 2.125in; margin: 0; }
+          body * { visibility: hidden; }
+          #kk-id-card, #kk-id-card * { visibility: visible; }
+          #kk-id-card { position: absolute; top: 0; left: 0; width: 3.375in; height: 2.125in; box-shadow: none !important; }
+        }
+      `}</style>
+
+      <div id="kk-id-card" className="w-full rounded-2xl overflow-hidden shadow-lg" style={{ maxWidth: 380, background: "white" }}>
+        <div className="px-4 py-3 flex items-center gap-2" style={{ background: NAVY }}>
+          <LogoBadge src={MUNICIPAL_LOGO_B64} label="Municipality of Presentacion" size={30} />
+          <LogoBadge src={LYDC_LOGO_B64} label="LYDC" size={30} />
+          <LogoBadge src={SKF_LOGO_B64} label="SK Federation" size={30} />
+          <div className="ml-1 leading-tight">
+            <div className="text-white text-xs font-bold">Katipunan ng Kabataan</div>
+            <div className="text-white/80 text-[10px]">Municipality of Presentacion</div>
+          </div>
+        </div>
+
+        <div className="p-4 flex gap-4">
+          <div className="w-20 h-24 rounded-lg overflow-hidden bg-stone-100 shrink-0 flex items-center justify-center">
+            {card.photoUrl
+              ? <img src={card.photoUrl} alt="" className="w-full h-full object-cover" />
+              : <Users size={28} className="text-stone-300" />}
+          </div>
+          <div className="min-w-0">
+            <div className="text-[10px] uppercase tracking-wide text-stone-400 font-semibold">KK Member</div>
+            <div className="font-bold leading-tight" style={{ color: NAVY }}>{fullName}</div>
+            <div className="text-xs text-stone-500 mt-1">{card.barangay}</div>
+            <div className="text-xs text-stone-500">{card.sex}{card.age ? `, ${card.age} yrs old` : ""}</div>
+            <div className="mt-2 font-mono text-xs font-bold" style={{ color: LEAF }}>{card.memberId}</div>
+          </div>
+        </div>
+      </div>
+
+      <button onClick={() => window.print()}
+        className="mt-6 px-5 py-2.5 rounded-lg text-white text-sm font-semibold print:hidden" style={{ background: NAVY }}>
+        Print This ID
+      </button>
+    </div>
   );
 }
 
@@ -248,7 +337,23 @@ function SelfRegisterScreen({ onBack }) {
   const [form, setForm] = useState({ ...emptyMemberForm, verified: false, source: "self" });
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState("");
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState("");
   const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }));
+
+  async function handlePhotoChange(e) {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    setUploadError("");
+    setUploading(true);
+    try {
+      const url = await storage.uploadMemberPhoto(form.barangay, file);
+      setForm(f => ({ ...f, photoUrl: url }));
+    } catch (err) {
+      setUploadError("Could not upload photo — please try a smaller image.");
+    }
+    setUploading(false);
+  }
 
   function toggleClassification(c) {
     setForm(f => {
@@ -310,6 +415,20 @@ function SelfRegisterScreen({ onBack }) {
       <main className="max-w-3xl mx-auto px-5 py-6">
         <form onSubmit={handleSubmit} className="bg-white rounded-xl border border-stone-200 p-5">
           <p className="text-sm text-stone-500 mb-4">Fill this out yourself — a member of your barangay's SK will review and verify your entry.</p>
+
+          <div className="mb-4 flex items-center gap-4">
+            <div className="w-20 h-24 rounded-lg overflow-hidden bg-stone-100 shrink-0 flex items-center justify-center">
+              {form.photoUrl
+                ? <img src={form.photoUrl} alt="" className="w-full h-full object-cover" />
+                : <Users size={24} className="text-stone-300" />}
+            </div>
+            <div>
+              <label className={labelCls}>Photo (for your digital ID)</label>
+              <input type="file" accept="image/jpeg,image/png,image/webp" onChange={handlePhotoChange} className="text-xs" />
+              {uploading && <div className="text-xs text-stone-400 mt-1">Uploading…</div>}
+              {uploadError && <div className="text-xs text-red-600 mt-1">{uploadError}</div>}
+            </div>
+          </div>
 
           <div className="grid sm:grid-cols-2 gap-4 mb-4">
             <div>
@@ -1039,6 +1158,12 @@ function MembersList({ search, setSearch, filterBarangay, setFilterBarangay, fil
                           <button onClick={() => onUnarchive(m.id)} className="text-xs font-medium" style={{ color: LEAF }}>Restore</button>
                         ) : (
                           <>
+                            {m.memberId && (
+                              <a href={`/id/${m.id}`} target="_blank" rel="noopener noreferrer"
+                                className="text-stone-500 hover:text-[#0038A8]" title="View / print digital ID">
+                                <CreditCard size={15} />
+                              </a>
+                            )}
                             <button onClick={() => startEdit(m)} className="text-stone-500 hover:text-[#132A46]"><Pencil size={15} /></button>
                             <button onClick={() => onArchive(m.id)} className="text-stone-500 hover:text-amber-600"><Archive size={15} /></button>
                             <button onClick={() => setConfirmDelete(m.id)} className="text-stone-500 hover:text-red-600"><Trash2 size={15} /></button>
@@ -1064,6 +1189,23 @@ function MembersList({ search, setSearch, filterBarangay, setFilterBarangay, fil
 
 function MemberForm({ form, setForm, editingId, handleSubmit, toggleClassification, resetForm, setView, inputCls, labelCls, isAdmin, lockedBarangay }) {
   const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }));
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState("");
+
+  async function handlePhotoChange(e) {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    setUploadError("");
+    setUploading(true);
+    try {
+      const url = await storage.uploadMemberPhoto(form.barangay, file);
+      setForm(f => ({ ...f, photoUrl: url }));
+    } catch (err) {
+      setUploadError("Could not upload photo — please try a smaller image.");
+    }
+    setUploading(false);
+  }
+
   return (
     <form onSubmit={handleSubmit} className="bg-white rounded-xl border border-stone-200 p-5 max-w-3xl">
       <div className="flex items-center justify-between mb-4">
@@ -1082,6 +1224,20 @@ function MemberForm({ form, setForm, editingId, handleSubmit, toggleClassificati
           KK Member ID: <strong>{form.memberId}</strong>
         </div>
       )}
+
+      <div className="mb-4 flex items-center gap-4">
+        <div className="w-20 h-24 rounded-lg overflow-hidden bg-stone-100 shrink-0 flex items-center justify-center">
+          {form.photoUrl
+            ? <img src={form.photoUrl} alt="" className="w-full h-full object-cover" />
+            : <Users size={24} className="text-stone-300" />}
+        </div>
+        <div>
+          <label className={labelCls}>Photo (for the digital ID)</label>
+          <input type="file" accept="image/jpeg,image/png,image/webp" onChange={handlePhotoChange} className="text-xs" />
+          {uploading && <div className="text-xs text-stone-400 mt-1">Uploading…</div>}
+          {uploadError && <div className="text-xs text-red-600 mt-1">{uploadError}</div>}
+        </div>
+      </div>
 
       <div className="grid sm:grid-cols-2 gap-4 mb-4">
         <div>

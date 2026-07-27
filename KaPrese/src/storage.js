@@ -48,6 +48,42 @@ export const storage = {
     };
   },
 
+  // Uploads a photo (used by both the officer form and public
+  // self-registration) and returns its public URL. Filenames are random,
+  // so a URL can't be guessed — but note this bucket is public-read, so
+  // anyone who does have the exact URL can view that one photo.
+  async uploadMemberPhoto(barangay, file) {
+    const ext = (file.name.split(".").pop() || "jpg").toLowerCase();
+    const path = `${barangay}/${crypto.randomUUID()}.${ext}`;
+    const { error } = await supabase.storage.from("member-photos").upload(path, file, {
+      cacheControl: "3600",
+      upsert: false,
+    });
+    if (error) throw error;
+    const { data } = supabase.storage.from("member-photos").getPublicUrl(path);
+    return data.publicUrl;
+  },
+
+  // Public digital-ID card lookup — no login needed, but only returns
+  // one record at a time and only if you already have its exact ID.
+  async getMemberCard(memberId) {
+    const { data, error } = await supabase.rpc("get_member_card", { p_member_id: memberId });
+    if (error) throw error;
+    const row = Array.isArray(data) ? data[0] : data;
+    if (!row) return null;
+    return {
+      memberId: row.member_id || "",
+      lastName: row.last_name,
+      firstName: row.first_name,
+      middleName: row.middle_name || "",
+      barangay: row.barangay,
+      age: row.age,
+      sex: row.sex || "",
+      photoUrl: row.photo_url || "",
+      verified: row.verified,
+    };
+  },
+
   // Public self-registration: RLS only allows this exact shape (see
   // "public self registration" policy) — verified/archived/source are
   // forced here as well as a first line of defense.
@@ -128,12 +164,14 @@ function toDbMember(m) {
     archived: !!m.archived,
     verified: m.verified !== false,
     source: m.source || "staff",
+    photo_url: m.photoUrl || null,
   };
 }
 function fromDbMember(r) {
   return {
     id: r.id,
     memberId: r.member_id || "",
+    photoUrl: r.photo_url || "",
     barangay: r.barangay,
     lastName: r.last_name,
     firstName: r.first_name,
