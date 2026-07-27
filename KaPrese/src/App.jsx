@@ -711,7 +711,7 @@ function MainApp({ session, onLogout }) {
     { id: "add", label: "Add Member", icon: Plus },
     { id: "officials", label: "SK Officials", icon: ShieldCheck },
     { id: "reports", label: "Reports", icon: FileBarChart },
-    ...(isAdmin ? [{ id: "settings", label: "Settings", icon: SettingsIcon }] : []),
+    { id: "settings", label: "Settings", icon: SettingsIcon },
   ];
 
   return (
@@ -807,7 +807,7 @@ function MainApp({ session, onLogout }) {
           <OfficialForm form={officialForm} setForm={setOfficialForm} editingId={editingOfficialId}
             handleSubmit={handleOfficialSubmit} resetForm={resetOfficialForm} setView={setView}
             inputCls={inputCls} labelCls={labelCls} isAdmin={isAdmin} lockedBarangay={session.barangay} />
-        ) : view === "settings" && isAdmin ? (
+        ) : view === "settings" ? (
           <SettingsPanel session={session} showToast={showToast} members={members} officials={officials} />
         ) : (
           <Reports scopeBarangay={scopeBarangay} members={members} agingList={agingList} exportCSV={exportCSV} />
@@ -1015,6 +1015,7 @@ function MembersList({ search, setSearch, filterBarangay, setFilterBarangay, fil
             <table className="w-full text-sm">
               <thead style={{ background: NAVY }} className="text-white">
                 <tr>
+                  <th className="text-left px-3 py-2 font-semibold">KK ID</th>
                   <th className="text-left px-3 py-2 font-semibold">Name</th>
                   <th className="text-left px-3 py-2 font-semibold">Barangay</th>
                   <th className="text-left px-3 py-2 font-semibold">Age</th>
@@ -1026,6 +1027,7 @@ function MembersList({ search, setSearch, filterBarangay, setFilterBarangay, fil
               <tbody>
                 {filteredMembers.map((m, i) => (
                   <tr key={m.id} className={i % 2 ? "bg-stone-50" : ""}>
+                    <td className="px-3 py-2 whitespace-nowrap text-stone-500 text-xs font-mono">{m.memberId || "—"}</td>
                     <td className="px-3 py-2 whitespace-nowrap">{m.lastName}, {m.firstName} {m.middleName ? m.middleName[0] + "." : ""}</td>
                     <td className="px-3 py-2 text-stone-600 whitespace-nowrap">{m.barangay}</td>
                     <td className="px-3 py-2">{m.age}</td>
@@ -1072,6 +1074,12 @@ function MemberForm({ form, setForm, editingId, handleSubmit, toggleClassificati
       {form.source === "self" && !form.verified && (
         <div className="mb-4 text-xs px-3 py-2 rounded-lg" style={{ background: "#FCEFE0", color: RUST }}>
           This is a self-submitted profile awaiting verification. Saving here will mark it as verified.
+        </div>
+      )}
+
+      {editingId && form.memberId && (
+        <div className="mb-4 text-xs px-3 py-2 rounded-lg bg-stone-100 text-stone-600 font-mono">
+          KK Member ID: <strong>{form.memberId}</strong>
         </div>
       )}
 
@@ -1307,17 +1315,6 @@ function SettingsPanel({ session, showToast, members, officials }) {
           </button>
         </div>
       </div>
-
-      {session.role === "admin" && (
-        <div className="bg-white rounded-xl border border-stone-200 p-5">
-          <h2 className="text-base font-bold mb-3" style={{ color: NAVY }}>Adding or Removing Officer Accounts</h2>
-          <p className="text-sm text-stone-500">
-            Each officer now has their own personal login instead of a shared passcode. To add, remove, or reset an
-            officer's account, use your Supabase project's dashboard: Authentication → Users to create the login,
-            and the <code>profiles</code> table to set their role and barangay. Ask for help with this step anytime.
-          </p>
-        </div>
-      )}
     </div>
   );
 }

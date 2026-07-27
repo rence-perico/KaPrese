@@ -133,6 +133,7 @@ function toDbMember(m) {
 function fromDbMember(r) {
   return {
     id: r.id,
+    memberId: r.member_id || "",
     barangay: r.barangay,
     lastName: r.last_name,
     firstName: r.first_name,
