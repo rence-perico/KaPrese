@@ -182,7 +182,7 @@ function KaPreseApp() {
 function DigitalIdCard({ memberId }) {
   const [card, setCard] = useState(null);
   const [loadState, setLoadState] = useState("loading"); // loading | ok | notfound | error
-  const [qrDataUrl, setQrDataUrl] = useState("");
+  
 
   useEffect(() => {
     (async () => {
@@ -196,13 +196,6 @@ function DigitalIdCard({ memberId }) {
       }
     })();
   }, [memberId]);
-
-  useEffect(() => {
-    if (loadState !== "ok") return;
-    QRCode.toDataURL(window.location.href, { margin: 1, width: 160 })
-      .then(setQrDataUrl)
-      .catch(() => setQrDataUrl(""));
-  }, [loadState]);
 
   if (loadState === "loading") {
     return <div className="min-h-screen flex items-center justify-center text-stone-400 text-sm" style={{ background: CREAM }}>Loading…</div>;
@@ -338,7 +331,9 @@ function DigitalIdCard({ memberId }) {
               <div className="text-[6px] text-stone-400">SK Federation President</div>
             </div>
           </div>
-          {qrDataUrl && <img src={qrDataUrl} alt="Verify" className="w-10 h-10 shrink-0" />}
+         {loadState === "ok" && (
+  <QRCodeSVG value={window.location.href} size={40} className="shrink-0" />
+)}
         </div>
       </div>
 
