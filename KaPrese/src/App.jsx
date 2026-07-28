@@ -10,6 +10,7 @@ import {
   PieChart, Pie, Cell, Legend
 } from "recharts";
 import { storage, auth } from "./storage.js";
+import QRCode from "qrcode";
 
 const BARANGAYS = [
   "Ayugao", "Bagong Sirang", "Baliguian", "Bantugan", "Bicalen", "Bitaogan",
@@ -181,6 +182,7 @@ function KaPreseApp() {
 function DigitalIdCard({ memberId }) {
   const [card, setCard] = useState(null);
   const [loadState, setLoadState] = useState("loading"); // loading | ok | notfound | error
+  const [qrDataUrl, setQrDataUrl] = useState("");
 
   useEffect(() => {
     (async () => {
@@ -194,6 +196,13 @@ function DigitalIdCard({ memberId }) {
       }
     })();
   }, [memberId]);
+
+  useEffect(() => {
+    if (loadState !== "ok") return;
+    QRCode.toDataURL(window.location.href, { margin: 1, width: 160 })
+      .then(setQrDataUrl)
+      .catch(() => setQrDataUrl(""));
+  }, [loadState]);
 
   if (loadState === "loading") {
     return <div className="min-h-screen flex items-center justify-center text-stone-400 text-sm" style={{ background: CREAM }}>Loading…</div>;
@@ -210,47 +219,131 @@ function DigitalIdCard({ memberId }) {
   }
 
   const fullName = `${card.firstName} ${card.middleName ? card.middleName[0] + ". " : ""}${card.lastName}`;
+  const birthdateDisplay = card.birthdate
+    ? new Date(card.birthdate + "T00:00:00").toLocaleDateString("en-US", { month: "2-digit", day: "2-digit", year: "numeric" })
+    : "—";
+  const issuedDisplay = card.idIssuedAt
+    ? new Date(card.idIssuedAt).toLocaleDateString("en-US", { month: "2-digit", day: "2-digit", year: "numeric" })
+    : "—";
+
+  const CARD_W = 340; // px on screen; print uses real CR80 inches instead
+  const CARD_H = Math.round(CARD_W / (3.375 / 2.125));
 
   return (
-    <div className="min-h-screen flex flex-col items-center py-10 px-4 print:py-0 print:block" style={{ background: CREAM, fontFamily: "'Inter', system-ui, sans-serif" }}>
+    <div className="min-h-screen flex flex-col items-center py-10 px-4 gap-6 print:py-0 print:gap-0 print:block" style={{ background: CREAM, fontFamily: "'Inter', system-ui, sans-serif" }}>
       <style>{`
         @media print {
           @page { size: 3.375in 2.125in; margin: 0; }
           body * { visibility: hidden; }
-          #kk-id-card, #kk-id-card * { visibility: visible; }
-          #kk-id-card { position: absolute; top: 0; left: 0; width: 3.375in; height: 2.125in; box-shadow: none !important; }
+          #kk-id-front, #kk-id-front *, #kk-id-back, #kk-id-back * { visibility: visible; }
+          #kk-id-front { position: absolute; top: 0; left: 0; width: 3.375in; height: 2.125in; box-shadow: none !important; page-break-after: always; }
+          #kk-id-back { position: absolute; top: 0; left: 0; width: 3.375in; height: 2.125in; box-shadow: none !important; }
         }
       `}</style>
 
-      <div id="kk-id-card" className="w-full rounded-2xl overflow-hidden shadow-lg" style={{ maxWidth: 380, background: "white" }}>
-        <div className="px-4 py-3 flex items-center gap-2" style={{ background: NAVY }}>
-          <LogoBadge src={MUNICIPAL_LOGO_B64} label="Municipality of Presentacion" size={30} />
-          <LogoBadge src={LYDC_LOGO_B64} label="LYDC" size={30} />
-          <LogoBadge src={SKF_LOGO_B64} label="SK Federation" size={30} />
+      {/* FRONT */}
+      <div id="kk-id-front" className="rounded-2xl overflow-hidden shadow-lg flex flex-col" style={{ width: CARD_W, height: CARD_H, background: "white" }}>
+        <div className="px-3 pt-2 pb-1.5 flex items-center gap-1.5 shrink-0" style={{ background: NAVY }}>
+          <LogoBadge src={MUNICIPAL_LOGO_B64} label="Municipality of Presentacion" size={26} />
+          <LogoBadge src={LYDC_LOGO_B64} label="LYDC" size={26} />
+          <LogoBadge src={SKF_LOGO_B64} label="SK Federation" size={26} />
           <div className="ml-1 leading-tight">
-            <div className="text-white text-xs font-bold">Katipunan ng Kabataan</div>
-            <div className="text-white/80 text-[10px]">Municipality of Presentacion</div>
+            <div className="text-white text-[11px] font-bold">KATIPUNAN NG KABATAAN</div>
+            <div className="text-white text-[9px] font-bold -mt-0.5">IDENTIFICATION CARD</div>
+          </div>
+        </div>
+        <div className="px-3 py-1 shrink-0 border-b border-stone-100">
+          <div className="text-[8px] italic font-medium" style={{ color: LEAF }}>Alamin. Iprofile. Paunlarin.</div>
+          <div className="text-[7px] text-stone-400">Municipality of Presentacion, Camarines Sur</div>
+        </div>
+
+        <div className="px-3 py-2 flex gap-3 flex-1 min-h-0">
+          <div className="flex flex-col items-center gap-1 shrink-0">
+            <div className="w-16 h-20 rounded overflow-hidden bg-stone-100 flex items-center justify-center border border-stone-200">
+              {card.photoUrl
+                ? <img src={card.photoUrl} alt="" className="w-full h-full object-cover" />
+                : <Users size={22} className="text-stone-300" />}
+            </div>
+            <div className="w-16 border-t border-stone-400 text-center text-[6px] text-stone-400 pt-0.5">Lagda / Signature</div>
+          </div>
+          <div className="min-w-0 grid grid-cols-2 gap-x-2 gap-y-1 text-[9px] content-start">
+            <div>
+              <div className="text-[6.5px] uppercase text-stone-400 font-semibold">Last Name</div>
+              <div className="font-bold leading-tight" style={{ color: NAVY }}>{card.lastName}</div>
+            </div>
+            <div>
+              <div className="text-[6.5px] uppercase text-stone-400 font-semibold">Contact Number</div>
+              <div className="font-semibold leading-tight">{card.contact || "—"}</div>
+            </div>
+            <div>
+              <div className="text-[6.5px] uppercase text-stone-400 font-semibold">First Name</div>
+              <div className="font-bold leading-tight" style={{ color: NAVY }}>{card.firstName}{card.middleName ? " " + card.middleName[0] + "." : ""}</div>
+            </div>
+            <div>
+              <div className="text-[6.5px] uppercase text-stone-400 font-semibold">Date Issued</div>
+              <div className="font-semibold leading-tight">{issuedDisplay}</div>
+            </div>
+            <div>
+              <div className="text-[6.5px] uppercase text-stone-400 font-semibold">Date of Birth</div>
+              <div className="font-semibold leading-tight">{birthdateDisplay}</div>
+            </div>
+            <div>
+              <div className="text-[6.5px] uppercase text-stone-400 font-semibold">Sex</div>
+              <div className="font-semibold leading-tight">{card.sex || "—"}</div>
+            </div>
+            <div className="col-span-2">
+              <div className="text-[6.5px] uppercase text-stone-400 font-semibold">Barangay</div>
+              <div className="font-semibold leading-tight">{card.barangay}</div>
+            </div>
           </div>
         </div>
 
-        <div className="p-4 flex gap-4">
-          <div className="w-20 h-24 rounded-lg overflow-hidden bg-stone-100 shrink-0 flex items-center justify-center">
-            {card.photoUrl
-              ? <img src={card.photoUrl} alt="" className="w-full h-full object-cover" />
-              : <Users size={28} className="text-stone-300" />}
+        <div className="px-3 py-1.5 shrink-0 font-mono text-[10px] font-bold text-white" style={{ background: LEAF }}>
+          KK ID NO: {card.memberId}
+        </div>
+      </div>
+
+      {/* BACK */}
+      <div id="kk-id-back" className="rounded-2xl overflow-hidden shadow-lg flex flex-col" style={{ width: CARD_W, height: CARD_H, background: "white" }}>
+        <div className="px-3 py-1.5 flex items-center gap-1.5 shrink-0" style={{ background: NAVY }}>
+          <LogoBadge src={MUNICIPAL_LOGO_B64} label="Municipality of Presentacion" size={20} />
+          <LogoBadge src={LYDC_LOGO_B64} label="LYDC" size={20} />
+          <LogoBadge src={SKF_LOGO_B64} label="SK Federation" size={20} />
+          <div className="text-white text-[9px] font-bold ml-1">Katipunan ng Kabataan &middot; Presentacion</div>
+        </div>
+
+        <div className="px-3 pt-2 shrink-0">
+          <div className="rounded text-center py-1 text-white text-[9px] font-bold" style={{ background: LEAF }}>IMPORTANT</div>
+        </div>
+
+        <div className="px-3 pt-1.5 text-[6.8px] leading-snug text-stone-600 flex-1 min-h-0 overflow-hidden">
+          This card is non-transferable and remains the property of the Sangguniang Kabataan Federation of
+          Presentacion. Any alteration, tampering, or unauthorized reproduction shall render this card invalid.
+          If found, please return to the Office of the Sangguniang Kabataan Federation, Municipal Hall,
+          Municipality of Presentacion, Camarines Sur, or contact the SK office of the member's barangay.
+        </div>
+
+        <div className="px-3 pb-2 pt-1 flex items-end gap-2 shrink-0">
+          <div className="flex-1 grid grid-cols-3 gap-1 text-center">
+            <div>
+              <div className="border-t border-stone-400 pt-0.5 text-[6.5px] font-bold leading-tight">Robert D. Perico</div>
+              <div className="text-[6px] text-stone-400">LYDC Head</div>
+            </div>
+            <div>
+              <div className="border-t border-stone-400 pt-0.5 text-[6.5px] font-bold leading-tight">Hon. Jimmy V. Deleña</div>
+              <div className="text-[6px] text-stone-400">Municipal Mayor</div>
+            </div>
+            <div>
+              <div className="border-t border-stone-400 pt-0.5 text-[6.5px] font-bold leading-tight">Hon. Arianne B. Peñero</div>
+              <div className="text-[6px] text-stone-400">SK Federation President</div>
+            </div>
           </div>
-          <div className="min-w-0">
-            <div className="text-[10px] uppercase tracking-wide text-stone-400 font-semibold">KK Member</div>
-            <div className="font-bold leading-tight" style={{ color: NAVY }}>{fullName}</div>
-            <div className="text-xs text-stone-500 mt-1">{card.barangay}</div>
-            <div className="text-xs text-stone-500">{card.sex}{card.age ? `, ${card.age} yrs old` : ""}</div>
-            <div className="mt-2 font-mono text-xs font-bold" style={{ color: LEAF }}>{card.memberId}</div>
-          </div>
+          {qrDataUrl && <img src={qrDataUrl} alt="Verify" className="w-10 h-10 shrink-0" />}
         </div>
       </div>
 
       <button onClick={() => window.print()}
-        className="mt-6 px-5 py-2.5 rounded-lg text-white text-sm font-semibold print:hidden" style={{ background: NAVY }}>
+        className="px-5 py-2.5 rounded-lg text-white text-sm font-semibold print:hidden" style={{ background: NAVY }}>
         Print This ID
       </button>
     </div>

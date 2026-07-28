@@ -81,6 +81,9 @@ export const storage = {
       sex: row.sex || "",
       photoUrl: row.photo_url || "",
       verified: row.verified,
+      contact: row.contact || "",
+      birthdate: row.birthdate || "",
+      idIssuedAt: row.id_issued_at || "",
     };
   },
 
