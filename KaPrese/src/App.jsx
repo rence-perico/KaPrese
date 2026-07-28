@@ -10,7 +10,7 @@ import {
   PieChart, Pie, Cell, Legend
 } from "recharts";
 import { storage, auth } from "./storage.js";
-import QRCode from "qrcode";
+import { QRCodeSVG } from "qrcode.react";
 
 const BARANGAYS = [
   "Ayugao", "Bagong Sirang", "Baliguian", "Bantugan", "Bicalen", "Bitaogan",
