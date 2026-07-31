@@ -84,6 +84,8 @@ export const storage = {
       contact: row.contact || "",
       birthdate: row.birthdate || "",
       idIssuedAt: row.id_issued_at || "",
+      classification: row.classification || [],
+      schoolName: row.school_name || "",
     };
   },
 
@@ -168,6 +170,7 @@ function toDbMember(m) {
     verified: m.verified !== false,
     source: m.source || "staff",
     photo_url: m.photoUrl || null,
+    school_name: m.schoolName || null,
   };
 }
 function fromDbMember(r) {
@@ -199,6 +202,7 @@ function fromDbMember(r) {
     archived: r.archived,
     verified: r.verified,
     source: r.source,
+    schoolName: r.school_name || "",
   };
 }
 function toDbOfficial(o) {

@@ -11,6 +11,7 @@ import {
 } from "recharts";
 import { storage, auth } from "./storage.js";
 import { QRCodeSVG } from "qrcode.react";
+import * as XLSX from "xlsx";
 
 const BARANGAYS = [
   "Ayugao", "Bagong Sirang", "Baliguian", "Bantugan", "Bicalen", "Bitaogan",
@@ -24,6 +25,21 @@ const CIVIL_STATUS = ["Single", "Married", "Widowed", "Separated", "Annulled", "
 const EDUC_ATTAINMENT = ["Elementary Level", "Elementary Graduate", "High School Level", "High School Graduate", "Vocational Graduate", "College Level", "College Graduate", "Master's Level/Graduate", "None"];
 const WORK_STATUS = ["Employed", "Unemployed", "Self-Employed", "Currently Looking for a Job", "Not Interested in Looking for a Job"];
 const SK_POSITIONS = ["SK Chairperson", "SK Kagawad", "SK Secretary", "SK Treasurer"];
+
+// Starter list for the "School / Institution" autocomplete. This is not an
+// official DepEd/CHED directory — it's seeded from the barangay list (most
+// barangays have their own elementary school) plus a few well-known
+// secondary/tertiary institutions serving Presentacion. Add, remove, or
+// rename entries here to match your municipality's actual schools; the
+// input still accepts free text for anything not on this list.
+const SCHOOLS = [
+  ...BARANGAYS.map(b => `${b} Elementary School`),
+  "Presentacion National High School",
+  "Presentacion Central School",
+  "Bagong Sirang National High School",
+  "Partido State University",
+  "Camarines Sur Polytechnic Colleges",
+].sort((a, b) => a.localeCompare(b));
 
 const NAVY = "#0038A8";   // SK Blue (Philippine flag blue)
 const GOLD = "#FCD116";   // SK Yellow/Gold
@@ -578,7 +594,10 @@ function SelfRegisterScreen({ onBack }) {
             {form.classification.some(c => c.includes("In-School Youth")) && (
               <div className="mt-3">
                 <label className={labelCls}>School / Institution Name</label>
-                <input value={form.schoolName} onChange={set("schoolName")} className={inputCls} placeholder="e.g. Presentacion National High School" />
+                <input value={form.schoolName} onChange={set("schoolName")} className={inputCls} placeholder="e.g. Presentacion National High School" list="school-options" />
+                <datalist id="school-options">
+                  {SCHOOLS.map(s => <option key={s} value={s} />)}
+                </datalist>
               </div>
             )}
           </div>
@@ -755,12 +774,34 @@ function MainApp({ session, onLogout }) {
   // touching another barangay's data, so there's no more read-modify-write
   // of a whole shared list, and no more conflict-retry logic needed: two
   // people editing different rows simply can't collide anymore.
+  // Flags a likely duplicate: same first + last name and same birthdate,
+  // ignoring an archived record or the one currently being edited. This is
+  // a soft warning, not a hard block — staff can still save if it's a
+  // genuine coincidence (e.g. cousins with the same name).
+  function findDuplicateMember(candidate, excludeId) {
+    const norm = s => (s || "").trim().toLowerCase();
+    return members.find(m =>
+      m.id !== excludeId &&
+      !m.archived &&
+      norm(m.lastName) === norm(candidate.lastName) &&
+      norm(m.firstName) === norm(candidate.firstName) &&
+      (m.birthdate || "") === (candidate.birthdate || "")
+    );
+  }
+
   async function handleMemberSubmit(e) {
     e.preventDefault();
     if (!form.lastName.trim() || !form.firstName.trim()) { showToast("Last name and first name are required."); return; }
     if (!isAdmin && form.barangay !== session.barangay) { showToast("You can only add members for your own barangay."); return; }
     const age = calcAge(form.birthdate);
     const record = { ...form, age, ageGroup: ageGroupFromAge(age), verified: true, source: form.source || "staff" };
+    const dupe = findDuplicateMember(record, editingId);
+    if (dupe) {
+      const proceed = window.confirm(
+        `A member named ${record.firstName} ${record.lastName} with the same birthdate is already recorded (Brgy. ${dupe.barangay}). Save this one anyway?`
+      );
+      if (!proceed) return;
+    }
     try {
       if (editingId) {
         const updated = await storage.updateMember(editingId, record);
@@ -909,13 +950,58 @@ function MainApp({ session, onLogout }) {
   const ipCount = scopedMembers.filter(m => m.ip).length;
 
   function exportCSV() {
-    const headers = ["Barangay","Last Name","First Name","Middle Name","Suffix","Age","Birthdate","Sex","Civil Status","Classification","PWD","IP","Age Group","Email","Contact","Address","Education","Work Status","Registered SK Voter","Registered National Voter","Attended KK Assembly","Archived","Source"];
+    const headers = ["Barangay","Last Name","First Name","Middle Name","Suffix","Age","Birthdate","Sex","Civil Status","Classification","School / Institution","PWD","IP","Age Group","Email","Contact","Address","Education","Work Status","Registered SK Voter","Registered National Voter","Attended KK Assembly","Archived","Source"];
     const rows = filteredMembers.map(m => [
       m.barangay, m.lastName, m.firstName, m.middleName, m.suffix, m.age, m.birthdate, m.sex, m.civilStatus,
-      (m.classification || []).join("; "), m.pwd ? "Yes" : "No", m.ip ? "Yes" : "No", m.ageGroup,
+      (m.classification || []).join("; "), m.schoolName || "", m.pwd ? "Yes" : "No", m.ip ? "Yes" : "No", m.ageGroup,
       m.email, m.contact, m.address, m.education, m.workStatus, m.registeredSKVoter, m.registeredNationalVoter, m.attendedAssembly, m.archived ? "Yes" : "No", m.source || "staff"
     ]);
     downloadCSV(headers, rows, `KK-Profile-${scopeBarangay.replace(/\s+/g, "_")}-${new Date().toISOString().slice(0,10)}.csv`);
+  }
+
+  // LGU-ready .xlsx export: one sheet with the full member roster (same
+  // columns as the CSV export, plus School/Institution), and a second
+  // "Summary" sheet with the per-barangay and per-classification counts —
+  // the numbers a municipal youth office typically asks for, ready to
+  // paste into a report without recomputing anything.
+  function exportExcel() {
+    const memberHeaders = ["Barangay","Last Name","First Name","Middle Name","Suffix","Age","Birthdate","Sex","Civil Status","Classification","School / Institution","PWD","IP","Age Group","Email","Contact","Address","Education","Work Status","Registered SK Voter","Registered National Voter","Attended KK Assembly","Archived","Source"];
+    const memberRows = filteredMembers.map(m => [
+      m.barangay, m.lastName, m.firstName, m.middleName, m.suffix, m.age, m.birthdate, m.sex, m.civilStatus,
+      (m.classification || []).join("; "), m.schoolName || "", m.pwd ? "Yes" : "No", m.ip ? "Yes" : "No", m.ageGroup,
+      m.email, m.contact, m.address, m.education, m.workStatus, m.registeredSKVoter, m.registeredNationalVoter, m.attendedAssembly, m.archived ? "Yes" : "No", m.source || "staff"
+    ]);
+    const membersSheet = XLSX.utils.aoa_to_sheet([memberHeaders, ...memberRows]);
+    membersSheet["!cols"] = memberHeaders.map(() => ({ wch: 16 }));
+
+    const activeMembers = filteredMembers.filter(m => !m.archived);
+    const summaryRows = [
+      ["KaPRESE — KK Profile Summary"],
+      ["Scope", scopeBarangay],
+      ["Generated", new Date().toLocaleString("en-PH")],
+      [],
+      ["Total Active KK Members", activeMembers.length],
+      ["PWD", activeMembers.filter(m => m.pwd).length],
+      ["Indigenous Person (IP)", activeMembers.filter(m => m.ip).length],
+      [],
+      ["Per Barangay", "Count"],
+      ...BARANGAYS
+        .filter(b => scopeBarangay === "All Barangays" || b === scopeBarangay)
+        .map(b => [b, activeMembers.filter(m => m.barangay === b).length]),
+      [],
+      ["Per Classification", "Count"],
+      ...CLASSIFICATIONS.map(c => [c, activeMembers.filter(m => (m.classification || []).includes(c)).length]),
+      [],
+      ["Per Age Group", "Count"],
+      ...AGE_GROUPS.map(g => [g, activeMembers.filter(m => m.ageGroup === g).length]),
+    ];
+    const summarySheet = XLSX.utils.aoa_to_sheet(summaryRows);
+    summarySheet["!cols"] = [{ wch: 32 }, { wch: 14 }];
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, summarySheet, "Summary");
+    XLSX.utils.book_append_sheet(wb, membersSheet, "Members");
+    XLSX.writeFile(wb, `KK-Profile-${scopeBarangay.replace(/\s+/g, "_")}-${new Date().toISOString().slice(0,10)}.xlsx`);
   }
 
   function exportOfficialsCSV() {
@@ -1024,7 +1110,7 @@ function MainApp({ session, onLogout }) {
           <MembersList search={search} setSearch={setSearch} filterBarangay={filterBarangay} setFilterBarangay={setFilterBarangay}
             filterClass={filterClass} setFilterClass={setFilterClass} filteredMembers={filteredMembers}
             startEdit={startEditMember} confirmDelete={confirmDelete} setConfirmDelete={setConfirmDelete}
-            handleDelete={handleDeleteMember} exportCSV={exportCSV} isAdmin={isAdmin}
+            handleDelete={handleDeleteMember} exportCSV={exportCSV} exportExcel={exportExcel} isAdmin={isAdmin}
             showArchived={showArchived} setShowArchived={setShowArchived}
             onArchive={id => setConfirmArchive(id)} onUnarchive={handleUnarchiveMember} />
         ) : view === "add" ? (
@@ -1042,7 +1128,7 @@ function MainApp({ session, onLogout }) {
         ) : view === "settings" ? (
           <SettingsPanel session={session} showToast={showToast} members={members} officials={officials} />
         ) : (
-          <Reports scopeBarangay={scopeBarangay} members={members} agingList={agingList} exportCSV={exportCSV} />
+          <Reports scopeBarangay={scopeBarangay} members={members} agingList={agingList} exportCSV={exportCSV} exportExcel={exportExcel} />
         )}
       </main>
 
@@ -1209,7 +1295,7 @@ function PendingQueue({ pendingMembers, onApprove, onReject, onEdit }) {
   );
 }
 
-function MembersList({ search, setSearch, filterBarangay, setFilterBarangay, filterClass, setFilterClass, filteredMembers, startEdit, confirmDelete, setConfirmDelete, handleDelete, exportCSV, isAdmin, showArchived, setShowArchived, onArchive, onUnarchive }) {
+function MembersList({ search, setSearch, filterBarangay, setFilterBarangay, filterClass, setFilterClass, filteredMembers, startEdit, confirmDelete, setConfirmDelete, handleDelete, exportCSV, exportExcel, isAdmin, showArchived, setShowArchived, onArchive, onUnarchive }) {
   return (
     <div>
       <div className="flex flex-col sm:flex-row gap-2 mb-4">
@@ -1232,8 +1318,11 @@ function MembersList({ search, setSearch, filterBarangay, setFilterBarangay, fil
           style={showArchived ? { background: NAVY, color: "white", borderColor: NAVY } : { background: "white", color: "#57534e", borderColor: "#d6d3d1" }}>
           <Archive size={14} /> {showArchived ? "Archived" : "Active"}
         </button>
-        <button onClick={exportCSV} className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-white text-sm font-medium" style={{ background: NAVY }}>
-          <Download size={14} /> Export CSV
+        <button onClick={exportCSV} className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium border" style={{ color: NAVY, borderColor: NAVY }}>
+          <Download size={14} /> CSV
+        </button>
+        <button onClick={exportExcel} className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-white text-sm font-medium" style={{ background: NAVY }}>
+          <Download size={14} /> Excel
         </button>
       </div>
 
@@ -1400,7 +1489,10 @@ function MemberForm({ form, setForm, editingId, handleSubmit, toggleClassificati
         {form.classification.some(c => c.includes("In-School Youth")) && (
           <div className="mt-3">
             <label className={labelCls}>School / Institution Name</label>
-            <input value={form.schoolName} onChange={set("schoolName")} className={inputCls} placeholder="e.g. Presentacion National High School" />
+            <input value={form.schoolName} onChange={set("schoolName")} className={inputCls} placeholder="e.g. Presentacion National High School" list="school-options-admin" />
+            <datalist id="school-options-admin">
+              {SCHOOLS.map(s => <option key={s} value={s} />)}
+            </datalist>
           </div>
         )}
       </div>
@@ -1594,7 +1686,7 @@ function SettingsPanel({ session, showToast, members, officials }) {
   );
 }
 
-function Reports({ scopeBarangay, members, agingList, exportCSV }) {
+function Reports({ scopeBarangay, members, agingList, exportCSV, exportExcel }) {
   const scoped = members.filter(m => m.verified && !m.archived && (scopeBarangay === "All Barangays" || m.barangay === scopeBarangay));
   const totalOSY = scoped.filter(m => (m.classification || []).some(c => c.includes("Out-of-School"))).length;
   const totalPWD = scoped.filter(m => m.pwd).length;
@@ -1619,8 +1711,11 @@ function Reports({ scopeBarangay, members, agingList, exportCSV }) {
           <li className="flex justify-between py-2"><span>Pending verification (self-submitted)</span><strong>{pendingCount}</strong></li>
           <li className="flex justify-between py-2"><span>Archived (removed from active roll)</span><strong>{archivedCount}</strong></li>
         </ul>
-        <button onClick={exportCSV} className="mt-4 w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-white text-sm font-semibold" style={{ background: NAVY }}>
-          <Download size={15} /> Download Full Data as CSV (for DILG submission)
+        <button onClick={exportExcel} className="mt-4 w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-white text-sm font-semibold" style={{ background: NAVY }}>
+          <Download size={15} /> Download as Excel (.xlsx) — for LGU/DILG submission
+        </button>
+        <button onClick={exportCSV} className="mt-2 w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold border" style={{ color: NAVY, borderColor: NAVY }}>
+          <Download size={15} /> Download as CSV
         </button>
       </div>
 
