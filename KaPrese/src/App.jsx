@@ -404,8 +404,8 @@ function FrontPage({ onRegister, onLogin }) {
           <h1 className="text-2xl sm:text-3xl font-bold leading-tight tracking-tight">KaPRESE</h1>
           <p className="text-sm sm:text-base font-medium text-white/90 mt-1">Alamin. Iprofile. Paunlarin.</p>
           <p className="text-xs text-blue-100 mt-2">Katipunan ng Kabataan Profiling System &middot; Municipality of Presentacion</p>
-          <p className="text-sm text-blue-100 mt-2">Local Youth Development Council (LYDC) &middot; Municipality of Presentacion, Camarines Sur</p>
-          <p className="text-xs text-blue-200 mt-1">In partnership with the Sangguniang Kabataan Federation of Presentacion</p>
+          <p className="text-sm text-blue-100 mt-2">Presentacion Youth Development (PYD) &middot; Municipality of Presentacion, Camarines Sur</p>
+          <p className="text-xs text-blue-200 mt-1">In partnership with the Local Youth Development Council and Sangguniang Kabataan Federation of Presentacion</p>
         </div>
         <div className="h-1.5 w-full" style={{ background: `linear-gradient(90deg, ${GOLD}, ${LEAF}, ${GOLD})` }} />
       </header>
@@ -670,7 +670,7 @@ function LoginScreen({ onLogin, onBack }) {
             <LogoBadge src={LYDC_LOGO_B64} label="LYDC" size={44} />
             <LogoBadge src={SKF_LOGO_B64} label="SK Federation" size={44} />
           </div>
-          <h1 className="text-lg font-bold text-center" style={{ color: NAVY }}>KaPRESE</h1>
+          <h1 className="text-lg font-bold text-center" style={{ color: NAVY }}>Ka-PAR!</h1>
           <p className="text-xs font-medium text-center" style={{ color: LEAF }}>Alamin. Iprofile. Paunlarin.</p>
           <p className="text-xs text-stone-500 text-center mt-1">LYDC &middot; Municipality of Presentacion</p>
         </div>
@@ -1040,7 +1040,7 @@ function MainApp({ session, onLogout }) {
           <div className="min-w-0 flex-1">
             <h1 className="text-base sm:text-lg font-bold leading-tight truncate">KaPRESE <span className="font-normal text-blue-100">&middot; Alamin. Iprofile. Paunlarin.</span></h1>
             <p className="text-[11px] sm:text-xs text-blue-100 truncate">
-              {isAdmin ? "LYDC Admin" : `SK Officer — Brgy. ${session.barangay}`} &middot; Municipality of Presentacion
+              {isAdmin ? "PYD Admin" : `SK Officer — Brgy. ${session.barangay}`} &middot; Municipality of Presentacion
             </p>
           </div>
           <button onClick={onLogout} className="flex items-center gap-1 text-xs text-blue-100 hover:text-white shrink-0">
