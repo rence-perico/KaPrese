@@ -151,10 +151,10 @@ export default function App() {
   if (idMatch) {
     return <DigitalIdCard memberId={idMatch[1]} />;
   }
-  return <KaPreseApp />;
+  return <KaParApp />;
 }
 
-function KaPreseApp() {
+function KaParApp() {
   const [screen, setScreen] = useState("front"); // front | register | login | app | checking
   const [session, setSession] = useState(null);
   const [checkingSession, setCheckingSession] = useState(true);
@@ -260,7 +260,7 @@ function DigitalIdCard({ memberId }) {
           <LogoBadge src={MUNICIPAL_LOGO_B64} label="Municipality of Presentacion" size={22} />
           <LogoBadge src={LYDC_LOGO_B64} label="LYDC" size={22} />
           <LogoBadge src={SKF_LOGO_B64} label="SK Federation" size={22} />
-          <LogoBadge src={PYD_LOGO_B64} label="Presentacion Youth Development / NYC" size={22} />
+          <LogoBadge src={PYD_LOGO_B64} label="Presentacion Youth Development Office (PYDO)" size={22} />
           <div className="ml-1 leading-tight">
             <div className="text-white text-[10px] font-bold">KATIPUNAN NG KABATAAN</div>
             <div className="text-white text-[8.5px] font-bold -mt-0.5">IDENTIFICATION CARD</div>
@@ -271,7 +271,7 @@ function DigitalIdCard({ memberId }) {
             <div className="text-[8px] italic font-medium" style={{ color: LEAF }}>Alamin. Iprofile. Paunlarin.</div>
             <div className="text-[7px] text-stone-400">Municipality of Presentacion, Camarines Sur</div>
           </div>
-          <div className="text-[6.5px] font-semibold text-right shrink-0" style={{ color: NAVY }}>KaPRESE &ndash; Presentacion<br/>Youth Profiling</div>
+          <div className="text-[6.5px] font-semibold text-right shrink-0" style={{ color: NAVY }}>Ka-Par! &ndash; Presentacion<br/>Youth Profiling</div>
         </div>
 
         <div className="px-3 py-2 flex gap-2 flex-1 min-h-0">
@@ -399,12 +399,12 @@ function FrontPage({ onRegister, onLogin }) {
             <LogoBadge src={MUNICIPAL_LOGO_B64} label="Municipality of Presentacion" size={64} />
             <LogoBadge src={LYDC_LOGO_B64} label="LYDC" size={64} />
             <LogoBadge src={SKF_LOGO_B64} label="SK Federation of Presentacion" size={64} />
-            <LogoBadge src={PYD_LOGO_B64} label="Presentacion Youth Development / NYC" size={64} />
+            <LogoBadge src={PYD_LOGO_B64} label="Presentacion Youth Development Office (PYDO)" size={64} />
           </div>
-          <h1 className="text-2xl sm:text-3xl font-bold leading-tight tracking-tight">KaPRESE</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold leading-tight tracking-tight">Ka-Par!</h1>
           <p className="text-sm sm:text-base font-medium text-white/90 mt-1">Alamin. Iprofile. Paunlarin.</p>
           <p className="text-xs text-blue-100 mt-2">Katipunan ng Kabataan Profiling System &middot; Municipality of Presentacion</p>
-          <p className="text-sm text-blue-100 mt-2">Presentacion Youth Development (PYD) &middot; Municipality of Presentacion, Camarines Sur</p>
+          <p className="text-sm text-blue-100 mt-2">Presentacion Youth Development Office (PYDO) &middot; Municipality of Presentacion, Camarines Sur</p>
           <p className="text-xs text-blue-200 mt-1">In partnership with the Local Youth Development Council and Sangguniang Kabataan Federation of Presentacion</p>
         </div>
         <div className="h-1.5 w-full" style={{ background: `linear-gradient(90deg, ${GOLD}, ${LEAF}, ${GOLD})` }} />
@@ -527,7 +527,7 @@ function SelfRegisterScreen({ onBack }) {
         <div className="max-w-3xl mx-auto px-5 py-4 flex items-center gap-3">
           <button onClick={onBack} className="text-stone-300 hover:text-white"><ArrowLeft size={18} /></button>
           <div>
-            <h1 className="text-base font-bold">KaPRESE — KK Youth Profile Registration</h1>
+            <h1 className="text-base font-bold">Ka-Par! — KK Youth Profile Registration</h1>
             <p className="text-xs text-stone-300">Municipality of Presentacion</p>
           </div>
         </div>
@@ -670,7 +670,7 @@ function LoginScreen({ onLogin, onBack }) {
             <LogoBadge src={LYDC_LOGO_B64} label="LYDC" size={44} />
             <LogoBadge src={SKF_LOGO_B64} label="SK Federation" size={44} />
           </div>
-          <h1 className="text-lg font-bold text-center" style={{ color: NAVY }}>Ka-PAR!</h1>
+          <h1 className="text-lg font-bold text-center" style={{ color: NAVY }}>Ka-Par!</h1>
           <p className="text-xs font-medium text-center" style={{ color: LEAF }}>Alamin. Iprofile. Paunlarin.</p>
           <p className="text-xs text-stone-500 text-center mt-1">LYDC &middot; Municipality of Presentacion</p>
         </div>
@@ -976,7 +976,7 @@ function MainApp({ session, onLogout }) {
 
     const activeMembers = filteredMembers.filter(m => !m.archived);
     const summaryRows = [
-      ["KaPRESE — KK Profile Summary"],
+      ["Ka-Par! — KK Profile Summary"],
       ["Scope", scopeBarangay],
       ["Generated", new Date().toLocaleString("en-PH")],
       [],
@@ -1036,11 +1036,11 @@ function MainApp({ session, onLogout }) {
     <div className="min-h-screen" style={{ background: CREAM, fontFamily: "'Inter', system-ui, sans-serif" }}>
       <header className="text-white" style={{ background: NAVY }}>
         <div className="max-w-6xl mx-auto px-5 py-4 flex items-center gap-4">
-          <LogoBadge src={PYD_LOGO_B64} label="Presentacion Youth Development / NYC" size={48} />
+          <LogoBadge src={PYD_LOGO_B64} label="Presentacion Youth Development Office (PYDO)" size={48} />
           <div className="min-w-0 flex-1">
-            <h1 className="text-base sm:text-lg font-bold leading-tight truncate">KaPRESE <span className="font-normal text-blue-100">&middot; Alamin. Iprofile. Paunlarin.</span></h1>
+            <h1 className="text-base sm:text-lg font-bold leading-tight truncate">Ka-Par! <span className="font-normal text-blue-100">&middot; Alamin. Iprofile. Paunlarin.</span></h1>
             <p className="text-[11px] sm:text-xs text-blue-100 truncate">
-              {isAdmin ? "PYD Admin" : `SK Officer — Brgy. ${session.barangay}`} &middot; Municipality of Presentacion
+              {isAdmin ? "PYDO Admin" : `SK Officer — Brgy. ${session.barangay}`} &middot; Municipality of Presentacion
             </p>
           </div>
           <button onClick={onLogout} className="flex items-center gap-1 text-xs text-blue-100 hover:text-white shrink-0">
