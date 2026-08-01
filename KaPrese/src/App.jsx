@@ -981,6 +981,11 @@ function MainApp({ session, onLogout }) {
   const pwdCount = scopedMembers.filter(m => m.pwd).length;
   const ipCount = scopedMembers.filter(m => m.ip).length;
 
+  // filterBarangay (the Members-page dropdown) narrows further than
+  // scopeBarangay (the admin's top-level scope), so it's the one that
+  // reflects what's actually in filteredMembers when it's set.
+  const effectiveScope = filterBarangay !== "All Barangays" ? filterBarangay : scopeBarangay;
+
   function exportCSV() {
     const headers = ["Barangay","Last Name","First Name","Middle Name","Suffix","Age","Birthdate","Sex","Civil Status","Classification","School / Institution","Grade / Year Level","Program / Strand","PWD","IP","Age Group","Email","Contact","Address","Education","Work Status","Registered SK Voter","Registered National Voter","Attended KK Assembly","Archived","Source"];
     const rows = filteredMembers.map(m => [
@@ -988,7 +993,7 @@ function MainApp({ session, onLogout }) {
       (m.classification || []).join("; "), m.schoolName || "", m.gradeLevel || "", m.program || "", m.pwd ? "Yes" : "No", m.ip ? "Yes" : "No", m.ageGroup,
       m.email, m.contact, m.address, m.education, m.workStatus, m.registeredSKVoter, m.registeredNationalVoter, m.attendedAssembly, m.archived ? "Yes" : "No", m.source || "staff"
     ]);
-    downloadCSV(headers, rows, `KK-Profile-${scopeBarangay.replace(/\s+/g, "_")}-${new Date().toISOString().slice(0,10)}.csv`);
+    downloadCSV(headers, rows, `KK-Profile-${effectiveScope.replace(/\s+/g, "_")}-${new Date().toISOString().slice(0,10)}.csv`);
   }
 
   // LGU-ready .xlsx export: one sheet with the full member roster (same
@@ -1009,7 +1014,7 @@ function MainApp({ session, onLogout }) {
     const activeMembers = filteredMembers.filter(m => !m.archived);
     const summaryRows = [
       ["Ka-Par! — KK Profile Summary"],
-      ["Scope", scopeBarangay],
+      ["Scope", effectiveScope],
       ["Generated", new Date().toLocaleString("en-PH")],
       [],
       ["Total Active KK Members", activeMembers.length],
@@ -1018,7 +1023,7 @@ function MainApp({ session, onLogout }) {
       [],
       ["Per Barangay", "Count"],
       ...BARANGAYS
-        .filter(b => scopeBarangay === "All Barangays" || b === scopeBarangay)
+        .filter(b => effectiveScope === "All Barangays" || b === effectiveScope)
         .map(b => [b, activeMembers.filter(m => m.barangay === b).length]),
       [],
       ["Per Classification", "Count"],
@@ -1033,7 +1038,7 @@ function MainApp({ session, onLogout }) {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, summarySheet, "Summary");
     XLSX.utils.book_append_sheet(wb, membersSheet, "Members");
-    XLSX.writeFile(wb, `KK-Profile-${scopeBarangay.replace(/\s+/g, "_")}-${new Date().toISOString().slice(0,10)}.xlsx`);
+    XLSX.writeFile(wb, `KK-Profile-${effectiveScope.replace(/\s+/g, "_")}-${new Date().toISOString().slice(0,10)}.xlsx`);
   }
 
   function exportOfficialsCSV() {
