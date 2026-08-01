@@ -86,6 +86,8 @@ export const storage = {
       idIssuedAt: row.id_issued_at || "",
       classification: row.classification || [],
       schoolName: row.school_name || "",
+      gradeLevel: row.grade_level || "",
+      program: row.program || "",
     };
   },
 
@@ -171,6 +173,8 @@ function toDbMember(m) {
     source: m.source || "staff",
     photo_url: m.photoUrl || null,
     school_name: m.schoolName || null,
+    grade_level: m.gradeLevel || null,
+    program: m.program || null,
   };
 }
 function fromDbMember(r) {
@@ -203,6 +207,8 @@ function fromDbMember(r) {
     verified: r.verified,
     source: r.source,
     schoolName: r.school_name || "",
+    gradeLevel: r.grade_level || "",
+    program: r.program || "",
   };
 }
 function toDbOfficial(o) {

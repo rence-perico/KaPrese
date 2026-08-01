@@ -41,6 +41,16 @@ const SCHOOLS = [
   "Camarines Sur Polytechnic Colleges",
 ].sort((a, b) => a.localeCompare(b));
 
+// Grade/Year Level options for In-School Youth. Senior High (Grade 11-12)
+// and College years are the levels where a specific strand/program makes
+// sense to ask for — junior high and below don't have one yet.
+const GRADE_LEVELS = [
+  "Grade 7", "Grade 8", "Grade 9", "Grade 10",
+  "Grade 11", "Grade 12",
+  "1st Year College", "2nd Year College", "3rd Year College", "4th Year College", "5th Year College",
+];
+const needsProgram = grade => /Grade 1[12]|College/.test(grade || "");
+
 const NAVY = "#0038A8";   // SK Blue (Philippine flag blue)
 const GOLD = "#FCD116";   // SK Yellow/Gold
 const LEAF = "#CE1126";   // SK Red — used as second accent throughout
@@ -58,6 +68,8 @@ const emptyMemberForm = {
   birthdate: "", sex: "Male", civilStatus: "Single",
   classification: [], pwd: false, ip: false,
   schoolName: "",
+  gradeLevel: "",
+  program: "",
   ageGroup: AGE_GROUPS[0],
   email: "", contact: "", address: "",
   education: EDUC_ATTAINMENT[0], workStatus: WORK_STATUS[0],
@@ -151,10 +163,10 @@ export default function App() {
   if (idMatch) {
     return <DigitalIdCard memberId={idMatch[1]} />;
   }
-  return <KaParApp />;
+  return <KaPreseApp />;
 }
 
-function KaParApp() {
+function KaPreseApp() {
   const [screen, setScreen] = useState("front"); // front | register | login | app | checking
   const [session, setSession] = useState(null);
   const [checkingSession, setCheckingSession] = useState(true);
@@ -260,7 +272,7 @@ function DigitalIdCard({ memberId }) {
           <LogoBadge src={MUNICIPAL_LOGO_B64} label="Municipality of Presentacion" size={22} />
           <LogoBadge src={LYDC_LOGO_B64} label="LYDC" size={22} />
           <LogoBadge src={SKF_LOGO_B64} label="SK Federation" size={22} />
-          <LogoBadge src={PYD_LOGO_B64} label="Presentacion Youth Development Office (PYDO)" size={22} />
+          <LogoBadge src={PYD_LOGO_B64} label="Presentacion Youth Development / NYC" size={22} />
           <div className="ml-1 leading-tight">
             <div className="text-white text-[10px] font-bold">KATIPUNAN NG KABATAAN</div>
             <div className="text-white text-[8.5px] font-bold -mt-0.5">IDENTIFICATION CARD</div>
@@ -314,7 +326,10 @@ function DigitalIdCard({ memberId }) {
             {isISY && (
               <div className="col-span-2">
                 <div className="text-[6.5px] uppercase text-stone-400 font-semibold">School / Institution</div>
-                <div className="font-semibold leading-tight">{card.schoolName || "—"}</div>
+                <div className="font-semibold leading-tight">
+                  {card.schoolName || "—"}
+                  {card.gradeLevel && <span className="font-normal text-stone-500"> &middot; {card.gradeLevel}{card.program ? ` (${card.program})` : ""}</span>}
+                </div>
               </div>
             )}
           </div>
@@ -399,13 +414,13 @@ function FrontPage({ onRegister, onLogin }) {
             <LogoBadge src={MUNICIPAL_LOGO_B64} label="Municipality of Presentacion" size={64} />
             <LogoBadge src={LYDC_LOGO_B64} label="LYDC" size={64} />
             <LogoBadge src={SKF_LOGO_B64} label="SK Federation of Presentacion" size={64} />
-            <LogoBadge src={PYD_LOGO_B64} label="Presentacion Youth Development Office (PYDO)" size={64} />
+            <LogoBadge src={PYD_LOGO_B64} label="Presentacion Youth Development / NYC" size={64} />
           </div>
           <h1 className="text-2xl sm:text-3xl font-bold leading-tight tracking-tight">Ka-Par!</h1>
           <p className="text-sm sm:text-base font-medium text-white/90 mt-1">Alamin. Iprofile. Paunlarin.</p>
           <p className="text-xs text-blue-100 mt-2">Katipunan ng Kabataan Profiling System &middot; Municipality of Presentacion</p>
-          <p className="text-sm text-blue-100 mt-2">Presentacion Youth Development Office (PYDO) &middot; Municipality of Presentacion, Camarines Sur</p>
-          <p className="text-xs text-blue-200 mt-1">In partnership with the Local Youth Development Council and Sangguniang Kabataan Federation of Presentacion</p>
+          <p className="text-sm text-blue-100 mt-2">Local Youth Development Council (LYDC) &middot; Municipality of Presentacion, Camarines Sur</p>
+          <p className="text-xs text-blue-200 mt-1">In partnership with the Sangguniang Kabataan Federation of Presentacion</p>
         </div>
         <div className="h-1.5 w-full" style={{ background: `linear-gradient(90deg, ${GOLD}, ${LEAF}, ${GOLD})` }} />
       </header>
@@ -479,7 +494,7 @@ function SelfRegisterScreen({ onBack }) {
       const has = f.classification.includes(c);
       const classification = has ? f.classification.filter(x => x !== c) : [...f.classification, c];
       const stillISY = classification.some(x => x.includes("In-School Youth"));
-      return { ...f, classification, schoolName: stillISY ? f.schoolName : "" };
+      return { ...f, classification, schoolName: stillISY ? f.schoolName : "", gradeLevel: stillISY ? f.gradeLevel : "", program: stillISY ? f.program : "" };
     });
   }
 
@@ -592,12 +607,29 @@ function SelfRegisterScreen({ onBack }) {
               <label className="flex items-center gap-1.5 text-sm text-stone-600"><input type="checkbox" checked={form.ip} onChange={e => setForm(f => ({ ...f, ip: e.target.checked }))} /> Indigenous Person</label>
             </div>
             {form.classification.some(c => c.includes("In-School Youth")) && (
-              <div className="mt-3">
-                <label className={labelCls}>School / Institution Name</label>
-                <input value={form.schoolName} onChange={set("schoolName")} className={inputCls} placeholder="e.g. Presentacion National High School" list="school-options" />
-                <datalist id="school-options">
-                  {SCHOOLS.map(s => <option key={s} value={s} />)}
-                </datalist>
+              <div className="mt-3 grid sm:grid-cols-2 gap-3">
+                <div className="sm:col-span-2">
+                  <label className={labelCls}>School / Institution Name</label>
+                  <input value={form.schoolName} onChange={set("schoolName")} className={inputCls} placeholder="e.g. Presentacion National High School" list="school-options" />
+                  <datalist id="school-options">
+                    {SCHOOLS.map(s => <option key={s} value={s} />)}
+                  </datalist>
+                </div>
+                <div>
+                  <label className={labelCls}>Grade / Year Level</label>
+                  <select value={form.gradeLevel} className={inputCls}
+                    onChange={e => setForm(f => ({ ...f, gradeLevel: e.target.value, program: needsProgram(e.target.value) ? f.program : "" }))}>
+                    <option value="">Select…</option>
+                    {GRADE_LEVELS.map(g => <option key={g}>{g}</option>)}
+                  </select>
+                </div>
+                {needsProgram(form.gradeLevel) && (
+                  <div>
+                    <label className={labelCls}>{form.gradeLevel.includes("College") ? "Course / Program" : "Strand"}</label>
+                    <input value={form.program} onChange={set("program")} className={inputCls}
+                      placeholder={form.gradeLevel.includes("College") ? "e.g. BS Computer Science" : "e.g. STEM, HUMSS, ABM"} />
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -765,7 +797,7 @@ function MainApp({ session, onLogout }) {
       const has = f.classification.includes(c);
       const classification = has ? f.classification.filter(x => x !== c) : [...f.classification, c];
       const stillISY = classification.some(x => x.includes("In-School Youth"));
-      return { ...f, classification, schoolName: stillISY ? f.schoolName : "" };
+      return { ...f, classification, schoolName: stillISY ? f.schoolName : "", gradeLevel: stillISY ? f.gradeLevel : "", program: stillISY ? f.program : "" };
     });
   }
 
@@ -950,10 +982,10 @@ function MainApp({ session, onLogout }) {
   const ipCount = scopedMembers.filter(m => m.ip).length;
 
   function exportCSV() {
-    const headers = ["Barangay","Last Name","First Name","Middle Name","Suffix","Age","Birthdate","Sex","Civil Status","Classification","School / Institution","PWD","IP","Age Group","Email","Contact","Address","Education","Work Status","Registered SK Voter","Registered National Voter","Attended KK Assembly","Archived","Source"];
+    const headers = ["Barangay","Last Name","First Name","Middle Name","Suffix","Age","Birthdate","Sex","Civil Status","Classification","School / Institution","Grade / Year Level","Program / Strand","PWD","IP","Age Group","Email","Contact","Address","Education","Work Status","Registered SK Voter","Registered National Voter","Attended KK Assembly","Archived","Source"];
     const rows = filteredMembers.map(m => [
       m.barangay, m.lastName, m.firstName, m.middleName, m.suffix, m.age, m.birthdate, m.sex, m.civilStatus,
-      (m.classification || []).join("; "), m.schoolName || "", m.pwd ? "Yes" : "No", m.ip ? "Yes" : "No", m.ageGroup,
+      (m.classification || []).join("; "), m.schoolName || "", m.gradeLevel || "", m.program || "", m.pwd ? "Yes" : "No", m.ip ? "Yes" : "No", m.ageGroup,
       m.email, m.contact, m.address, m.education, m.workStatus, m.registeredSKVoter, m.registeredNationalVoter, m.attendedAssembly, m.archived ? "Yes" : "No", m.source || "staff"
     ]);
     downloadCSV(headers, rows, `KK-Profile-${scopeBarangay.replace(/\s+/g, "_")}-${new Date().toISOString().slice(0,10)}.csv`);
@@ -965,10 +997,10 @@ function MainApp({ session, onLogout }) {
   // the numbers a municipal youth office typically asks for, ready to
   // paste into a report without recomputing anything.
   function exportExcel() {
-    const memberHeaders = ["Barangay","Last Name","First Name","Middle Name","Suffix","Age","Birthdate","Sex","Civil Status","Classification","School / Institution","PWD","IP","Age Group","Email","Contact","Address","Education","Work Status","Registered SK Voter","Registered National Voter","Attended KK Assembly","Archived","Source"];
+    const memberHeaders = ["Barangay","Last Name","First Name","Middle Name","Suffix","Age","Birthdate","Sex","Civil Status","Classification","School / Institution","Grade / Year Level","Program / Strand","PWD","IP","Age Group","Email","Contact","Address","Education","Work Status","Registered SK Voter","Registered National Voter","Attended KK Assembly","Archived","Source"];
     const memberRows = filteredMembers.map(m => [
       m.barangay, m.lastName, m.firstName, m.middleName, m.suffix, m.age, m.birthdate, m.sex, m.civilStatus,
-      (m.classification || []).join("; "), m.schoolName || "", m.pwd ? "Yes" : "No", m.ip ? "Yes" : "No", m.ageGroup,
+      (m.classification || []).join("; "), m.schoolName || "", m.gradeLevel || "", m.program || "", m.pwd ? "Yes" : "No", m.ip ? "Yes" : "No", m.ageGroup,
       m.email, m.contact, m.address, m.education, m.workStatus, m.registeredSKVoter, m.registeredNationalVoter, m.attendedAssembly, m.archived ? "Yes" : "No", m.source || "staff"
     ]);
     const membersSheet = XLSX.utils.aoa_to_sheet([memberHeaders, ...memberRows]);
@@ -1036,11 +1068,11 @@ function MainApp({ session, onLogout }) {
     <div className="min-h-screen" style={{ background: CREAM, fontFamily: "'Inter', system-ui, sans-serif" }}>
       <header className="text-white" style={{ background: NAVY }}>
         <div className="max-w-6xl mx-auto px-5 py-4 flex items-center gap-4">
-          <LogoBadge src={PYD_LOGO_B64} label="Presentacion Youth Development Office (PYDO)" size={48} />
+          <LogoBadge src={PYD_LOGO_B64} label="Presentacion Youth Development / NYC" size={48} />
           <div className="min-w-0 flex-1">
             <h1 className="text-base sm:text-lg font-bold leading-tight truncate">Ka-Par! <span className="font-normal text-blue-100">&middot; Alamin. Iprofile. Paunlarin.</span></h1>
             <p className="text-[11px] sm:text-xs text-blue-100 truncate">
-              {isAdmin ? "PYDO Admin" : `SK Officer — Brgy. ${session.barangay}`} &middot; Municipality of Presentacion
+              {isAdmin ? "LYDC Admin" : `SK Officer — Brgy. ${session.barangay}`} &middot; Municipality of Presentacion
             </p>
           </div>
           <button onClick={onLogout} className="flex items-center gap-1 text-xs text-blue-100 hover:text-white shrink-0">
@@ -1487,12 +1519,29 @@ function MemberForm({ form, setForm, editingId, handleSubmit, toggleClassificati
           <label className="flex items-center gap-1.5 text-sm text-stone-600"><input type="checkbox" checked={form.ip} onChange={e => setForm(f => ({ ...f, ip: e.target.checked }))} /> Indigenous Person</label>
         </div>
         {form.classification.some(c => c.includes("In-School Youth")) && (
-          <div className="mt-3">
-            <label className={labelCls}>School / Institution Name</label>
-            <input value={form.schoolName} onChange={set("schoolName")} className={inputCls} placeholder="e.g. Presentacion National High School" list="school-options-admin" />
-            <datalist id="school-options-admin">
-              {SCHOOLS.map(s => <option key={s} value={s} />)}
-            </datalist>
+          <div className="mt-3 grid sm:grid-cols-2 gap-3">
+            <div className="sm:col-span-2">
+              <label className={labelCls}>School / Institution Name</label>
+              <input value={form.schoolName} onChange={set("schoolName")} className={inputCls} placeholder="e.g. Presentacion National High School" list="school-options-admin" />
+              <datalist id="school-options-admin">
+                {SCHOOLS.map(s => <option key={s} value={s} />)}
+              </datalist>
+            </div>
+            <div>
+              <label className={labelCls}>Grade / Year Level</label>
+              <select value={form.gradeLevel} className={inputCls}
+                onChange={e => setForm(f => ({ ...f, gradeLevel: e.target.value, program: needsProgram(e.target.value) ? f.program : "" }))}>
+                <option value="">Select…</option>
+                {GRADE_LEVELS.map(g => <option key={g}>{g}</option>)}
+              </select>
+            </div>
+            {needsProgram(form.gradeLevel) && (
+              <div>
+                <label className={labelCls}>{form.gradeLevel.includes("College") ? "Course / Program" : "Strand"}</label>
+                <input value={form.program} onChange={set("program")} className={inputCls}
+                  placeholder={form.gradeLevel.includes("College") ? "e.g. BS Computer Science" : "e.g. STEM, HUMSS, ABM"} />
+              </div>
+            )}
           </div>
         )}
       </div>

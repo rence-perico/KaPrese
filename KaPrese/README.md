@@ -1,4 +1,4 @@
-# KaPRESE — KK Profiling System (standalone website)
+# Ka-Par! — Presentacion Youth Profiling System (standalone website)
 
 A real, standalone website version of the KK Profiling System for the
 Municipality of Presentacion. Built with React + Vite + Tailwind, using
@@ -43,7 +43,7 @@ You'll need [Node.js](https://nodejs.org) installed (version 18 or newer).
    npm run dev
    ```
    Open the URL it prints (usually http://localhost:5173). You should see
-   the KaPRESE front page with your three logos. Try registering as a
+   the Ka-Par! front page with your four logos. Try registering as a
    barangay, logging in as admin (default passcode `LYDC2026`, change it
    right away under Settings), and adding a member — then check your
    Supabase table (Table Editor → kv_store) to confirm the data landed
