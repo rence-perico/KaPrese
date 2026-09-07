@@ -160,10 +160,11 @@ export class ErrorBoundary extends React.Component {
 
 export default function App() {
   const idMatch = typeof window !== "undefined" ? window.location.pathname.match(/^\/id\/([^/]+)\/?$/) : null;
-  if (idMatch) {
-    return <DigitalIdCard memberId={idMatch[1]} />;
-  }
-  return <KaPreseApp />;
+  return (
+    <ErrorBoundary>
+      {idMatch ? <DigitalIdCard memberId={idMatch[1]} /> : <KaPreseApp />}
+    </ErrorBoundary>
+  );
 }
 
 function KaPreseApp() {
@@ -414,12 +415,12 @@ function FrontPage({ onRegister, onLogin }) {
             <LogoBadge src={MUNICIPAL_LOGO_B64} label="Municipality of Presentacion" size={64} />
             <LogoBadge src={LYDC_LOGO_B64} label="LYDC" size={64} />
             <LogoBadge src={SKF_LOGO_B64} label="SK Federation of Presentacion" size={64} />
-            <LogoBadge src={PYD_LOGO_B64} label="Presentacion Youth Development Office (PYDO)" size={64} />
+            <LogoBadge src={PYD_LOGO_B64} label="Presentacion Youth Development / NYC" size={64} />
           </div>
           <h1 className="text-2xl sm:text-3xl font-bold leading-tight tracking-tight">Ka-Par!</h1>
           <p className="text-sm sm:text-base font-medium text-white/90 mt-1">Alamin. Iprofile. Paunlarin.</p>
           <p className="text-xs text-blue-100 mt-2">Katipunan ng Kabataan Profiling System &middot; Municipality of Presentacion</p>
-          <p className="text-sm text-blue-100 mt-2">Presentacion Youth Development Office (PYDO) &middot; Municipality of Presentacion, Camarines Sur</p>
+          <p className="text-sm text-blue-100 mt-2">Presentacion Youth Development Office &middot; Municipality of Presentacion, Camarines Sur</p>
           <p className="text-xs text-blue-200 mt-1">In partnership with the Local Youth Development Council and the Sangguniang Kabataan Federation of Presentacion</p>
         </div>
         <div className="h-1.5 w-full" style={{ background: `linear-gradient(90deg, ${GOLD}, ${LEAF}, ${GOLD})` }} />
@@ -1036,8 +1037,8 @@ function MainApp({ session, onLogout }) {
     summarySheet["!cols"] = [{ wch: 32 }, { wch: 14 }];
 
     const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, membersSheet, "Full Member List");
     XLSX.utils.book_append_sheet(wb, summarySheet, "Summary");
-    XLSX.utils.book_append_sheet(wb, membersSheet, "Members");
     XLSX.writeFile(wb, `KK-Profile-${effectiveScope.replace(/\s+/g, "_")}-${new Date().toISOString().slice(0,10)}.xlsx`);
   }
 
@@ -1765,11 +1766,15 @@ function Reports({ scopeBarangay, members, agingList, exportCSV, exportExcel }) 
           <li className="flex justify-between py-2"><span>Pending verification (self-submitted)</span><strong>{pendingCount}</strong></li>
           <li className="flex justify-between py-2"><span>Archived (removed from active roll)</span><strong>{archivedCount}</strong></li>
         </ul>
-        <button onClick={exportExcel} className="mt-4 w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-white text-sm font-semibold" style={{ background: NAVY }}>
-          <Download size={15} /> Download as Excel (.xlsx) — for LGU/DILG submission
+        <p className="text-xs text-stone-400 mt-3">
+          Both downloads below include every member's full profile (name, contact, classification, school details, etc.) for everyone currently
+          in view — not just the summary numbers above. The Excel file also includes this summary as a separate sheet.
+        </p>
+        <button onClick={exportExcel} className="mt-3 w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-white text-sm font-semibold" style={{ background: NAVY }}>
+          <Download size={15} /> Download Full Member List (Excel) — for LGU/DILG submission
         </button>
         <button onClick={exportCSV} className="mt-2 w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold border" style={{ color: NAVY, borderColor: NAVY }}>
-          <Download size={15} /> Download as CSV
+          <Download size={15} /> Download Full Member List (CSV)
         </button>
       </div>
 
