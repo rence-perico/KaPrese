@@ -987,6 +987,16 @@ function MainApp({ session, onLogout }) {
   // reflects what's actually in filteredMembers when it's set.
   const effectiveScope = filterBarangay !== "All Barangays" ? filterBarangay : scopeBarangay;
 
+  // The Reports page's own export, independent of Members-page filters.
+  // Mirrors exactly what Reports' on-screen "Total active KK members"
+  // count already computes — barangay scope only, nothing from the
+  // Members tab's search/barangay/classification filters can silently
+  // shrink this one.
+  const reportScopedMembers = useMemo(
+    () => members.filter(m => m.verified && !m.archived && (scopeBarangay === "All Barangays" || m.barangay === scopeBarangay)),
+    [members, scopeBarangay]
+  );
+
   function exportCSV() {
     const headers = ["Barangay","Last Name","First Name","Middle Name","Suffix","Age","Birthdate","Sex","Civil Status","Classification","School / Institution","Grade / Year Level","Program / Strand","PWD","IP","Age Group","Email","Contact","Address","Education","Work Status","Registered SK Voter","Registered National Voter","Attended KK Assembly","Archived","Source"];
     const rows = filteredMembers.map(m => [
@@ -1040,6 +1050,59 @@ function MainApp({ session, onLogout }) {
     XLSX.utils.book_append_sheet(wb, membersSheet, "Full Member List");
     XLSX.utils.book_append_sheet(wb, summarySheet, "Summary");
     XLSX.writeFile(wb, `KK-Profile-${effectiveScope.replace(/\s+/g, "_")}-${new Date().toISOString().slice(0,10)}.xlsx`);
+  }
+
+  // Reports-page versions of the two exports above — same column layout,
+  // but built from reportScopedMembers instead of filteredMembers, so a
+  // forgotten search term or classification filter on the Members tab
+  // can never silently shrink what Reports downloads.
+  function exportReportCSV() {
+    const headers = ["Barangay","Last Name","First Name","Middle Name","Suffix","Age","Birthdate","Sex","Civil Status","Classification","School / Institution","Grade / Year Level","Program / Strand","PWD","IP","Age Group","Email","Contact","Address","Education","Work Status","Registered SK Voter","Registered National Voter","Attended KK Assembly","Archived","Source"];
+    const rows = reportScopedMembers.map(m => [
+      m.barangay, m.lastName, m.firstName, m.middleName, m.suffix, m.age, m.birthdate, m.sex, m.civilStatus,
+      (m.classification || []).join("; "), m.schoolName || "", m.gradeLevel || "", m.program || "", m.pwd ? "Yes" : "No", m.ip ? "Yes" : "No", m.ageGroup,
+      m.email, m.contact, m.address, m.education, m.workStatus, m.registeredSKVoter, m.registeredNationalVoter, m.attendedAssembly, m.archived ? "Yes" : "No", m.source || "staff"
+    ]);
+    downloadCSV(headers, rows, `KK-Profile-${scopeBarangay.replace(/\s+/g, "_")}-${new Date().toISOString().slice(0,10)}.csv`);
+  }
+
+  function exportReportExcel() {
+    const memberHeaders = ["Barangay","Last Name","First Name","Middle Name","Suffix","Age","Birthdate","Sex","Civil Status","Classification","School / Institution","Grade / Year Level","Program / Strand","PWD","IP","Age Group","Email","Contact","Address","Education","Work Status","Registered SK Voter","Registered National Voter","Attended KK Assembly","Archived","Source"];
+    const memberRows = reportScopedMembers.map(m => [
+      m.barangay, m.lastName, m.firstName, m.middleName, m.suffix, m.age, m.birthdate, m.sex, m.civilStatus,
+      (m.classification || []).join("; "), m.schoolName || "", m.gradeLevel || "", m.program || "", m.pwd ? "Yes" : "No", m.ip ? "Yes" : "No", m.ageGroup,
+      m.email, m.contact, m.address, m.education, m.workStatus, m.registeredSKVoter, m.registeredNationalVoter, m.attendedAssembly, m.archived ? "Yes" : "No", m.source || "staff"
+    ]);
+    const membersSheet = XLSX.utils.aoa_to_sheet([memberHeaders, ...memberRows]);
+    membersSheet["!cols"] = memberHeaders.map(() => ({ wch: 16 }));
+
+    const summaryRows = [
+      ["Ka-Par! — KK Profile Summary"],
+      ["Scope", scopeBarangay],
+      ["Generated", new Date().toLocaleString("en-PH")],
+      [],
+      ["Total Active KK Members", reportScopedMembers.length],
+      ["PWD", reportScopedMembers.filter(m => m.pwd).length],
+      ["Indigenous Person (IP)", reportScopedMembers.filter(m => m.ip).length],
+      [],
+      ["Per Barangay", "Count"],
+      ...BARANGAYS
+        .filter(b => scopeBarangay === "All Barangays" || b === scopeBarangay)
+        .map(b => [b, reportScopedMembers.filter(m => m.barangay === b).length]),
+      [],
+      ["Per Classification", "Count"],
+      ...CLASSIFICATIONS.map(c => [c, reportScopedMembers.filter(m => (m.classification || []).includes(c)).length]),
+      [],
+      ["Per Age Group", "Count"],
+      ...AGE_GROUPS.map(g => [g, reportScopedMembers.filter(m => m.ageGroup === g).length]),
+    ];
+    const summarySheet = XLSX.utils.aoa_to_sheet(summaryRows);
+    summarySheet["!cols"] = [{ wch: 32 }, { wch: 14 }];
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, membersSheet, "Full Member List");
+    XLSX.utils.book_append_sheet(wb, summarySheet, "Summary");
+    XLSX.writeFile(wb, `KK-Profile-${scopeBarangay.replace(/\s+/g, "_")}-${new Date().toISOString().slice(0,10)}.xlsx`);
   }
 
   function exportOfficialsCSV() {
@@ -1166,7 +1229,7 @@ function MainApp({ session, onLogout }) {
         ) : view === "settings" ? (
           <SettingsPanel session={session} showToast={showToast} members={members} officials={officials} />
         ) : (
-          <Reports scopeBarangay={scopeBarangay} members={members} agingList={agingList} exportCSV={exportCSV} exportExcel={exportExcel} />
+          <Reports scopeBarangay={scopeBarangay} members={members} agingList={agingList} exportCSV={exportReportCSV} exportExcel={exportReportExcel} />
         )}
       </main>
 
